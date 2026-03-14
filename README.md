@@ -14,6 +14,34 @@ This system closes that loop:
 - **Active recall** — search your full conversation history by keyword or meaning, mid-session, via MCP tools or slash commands
 - **Knowledge accumulation** — facts, preferences, and decisions are extracted from every conversation and build up over time
 
+## What 8 Weeks of Memory Looks Like
+
+After ~2 months of normal Claude Code usage, the system has accumulated:
+
+| Metric | Value |
+|--------|-------|
+| Conversations indexed | 13,000+ messages across 400+ sessions |
+| Vector embeddings | 13,000+ (every message searchable by meaning) |
+| Facts extracted | 670+ (preferences, decisions, learnings, context) |
+| Entities tracked | 330+ (libraries, tools, services, languages) |
+| Machines covered | 3 (primary dev, cloud server, secondary) |
+| Projects spanned | 14 |
+| Database size | 40 MB |
+
+The entity graph alone tells you things you might not track yourself:
+
+```
+Languages:      python(85x), bash(42x), javascript(6x)
+Platforms:       github(107x), aws(16x), vercel(21x)
+AI Services:    claude(318x), perplexity(47x), gpt(28x)
+Infrastructure: tailscale(33x), systemd(23x), docker(5x)
+Tools:          git(26x), playwright(19x), pip(15x), tmux(11x)
+Databases:      sqlite(10x), postgres(6x)
+Protocols:      ssh(77x), http(76x), websocket(20x)
+```
+
+When you ask *"What testing libraries have I actually been using?"* — the answer comes from your real usage patterns, not guesswork.
+
 ## Architecture
 
 ```
