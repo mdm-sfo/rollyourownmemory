@@ -6,7 +6,7 @@
 [![MCP](https://img.shields.io/badge/MCP-compatible-brightgreen.svg)](https://modelcontextprotocol.io)
 [![100% Local](https://img.shields.io/badge/privacy-100%25%20local-success.svg)](#privacy)
 
-> **"Dude, we literally fixed this exact same bug two weeks ago. Why don't you remember that?"**
+> **"Bro, we literally fixed this exact same bug two weeks ago. Why don't you remember that?"**
 
 That's the problem. Every Claude Code session starts from zero. It doesn't know your projects, your preferences, or that you debugged this identical stack trace last Tuesday. You re-explain context constantly. You lose decisions. You repeat yourself.
 
