@@ -1,0 +1,21 @@
+# Database (contains your personal conversations)
+memory.db
+memory.db-wal
+memory.db-shm
+
+# State (contains local file paths and offsets)
+state.json
+
+# Logs
+*.log
+
+# Personal curated facts
+curated-facts.md
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store

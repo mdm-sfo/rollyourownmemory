@@ -1,0 +1,357 @@
+#!/usr/bin/env python3
+"""Claude Memory ETL — ingest JSONL conversation logs into SQLite + FTS5."""
+
+import argparse
+import json
+import os
+import sqlite3
+import sys
+import tempfile
+from datetime import datetime
+from pathlib import Path
+
+MEMORY_DIR = Path(__file__).parent
+DB_PATH = MEMORY_DIR / "memory.db"
+STATE_PATH = MEMORY_DIR / "state.json"
+SCHEMA_PATH = MEMORY_DIR / "schema.sql"
+
+# Source directories
+HOME = Path.home()
+HISTORY_FILE = HOME / ".claude" / "history.jsonl"
+PROJECTS_DIR = HOME / ".claude" / "projects"
+WORMHOLE_LOGS = HOME / "wormhole" / "claude-logs"
+
+# Record types to skip in project JONLs
+SKIP_TYPES = {"progress", "file-history-snapshot", "queue-operation", "system"}
+
+
+def load_state():
+    if STATE_PATH.exists():
+        return json.loads(STATE_PATH.read_text())
+    return {}
+
+
+def save_state(state):
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=MEMORY_DIR, suffix=".json")
+    try:
+        with os.fdopen(tmp_fd, "w") as f:
+            json.dump(state, f, indent=2)
+        os.replace(tmp_path, STATE_PATH)
+    except Exception:
+        os.unlink(tmp_path)
+        raise
+
+
+def init_db(conn):
+    conn.executescript(SCHEMA_PATH.read_text())
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+
+
+def derive_machine(source_file: str) -> str:
+    if "wormhole/claude-logs/ec2" in source_file:
+        return "ec2"
+    if "wormhole/claude-logs/llm" in source_file:
+        return "llm"
+    if "wormhole/claude-logs/" in source_file:
+        name = Path(source_file).stem
+        parts = name.split("-")
+        return parts[0] if parts else "unknown"
+    if ".claude/projects/" in source_file:
+        return "spark"
+    return "spark"
+
+
+def derive_project(source_file: str) -> str:
+    """Extract project name from Claude's encoded project directory names.
+
+    Claude encodes paths like /home/user/my-project as -home-user-my--project
+    (single hyphens are path separators, double hyphens are literal hyphens).
+    Handles both .claude/projects/ and wormhole ec2-projects/ paths.
+    """
+    parts = Path(source_file).parts
+    for i, p in enumerate(parts):
+        if p.endswith("projects") and i + 1 < len(parts):
+            raw = parts[i + 1]
+            placeholder = "\x00"
+            escaped = raw.replace("--", placeholder)
+            segments = escaped.lstrip("-").split("-")
+            path = "/" + "/".join(s.replace(placeholder, "-") for s in segments)
+            return path
+    return None
+
+
+def parse_history_file(filepath: str, offset: int = 0):
+    """Parse ~/.claude/history.jsonl — user prompts with metadata."""
+    records = []
+    machine = derive_machine(str(filepath))
+    with open(filepath, "rb") as f:
+        f.seek(offset)
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            display = d.get("display", "").strip()
+            if not display:
+                continue
+
+            ts = d.get("timestamp")
+            if isinstance(ts, (int, float)):
+                ts = datetime.fromtimestamp(ts / 1000).isoformat()
+
+            project = d.get("project")
+            session_id = d.get("sessionId")
+
+            records.append({
+                "source_file": filepath,
+                "session_id": session_id,
+                "project": project,
+                "role": "user",
+                "content": display,
+                "timestamp": ts,
+                "machine": machine,
+            })
+        new_offset = f.tell()
+    return records, new_offset
+
+
+def extract_text_content(message):
+    """Extract text from message content (handles both str and list of blocks)."""
+    if not message or not isinstance(message, dict):
+        return None
+    content = message.get("content")
+    if isinstance(content, str):
+        return content.strip() if content.strip() else None
+    if isinstance(content, list):
+        texts = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                t = block.get("text", "").strip()
+                if t:
+                    texts.append(t)
+        return "\n\n".join(texts) if texts else None
+    return None
+
+
+def parse_project_jsonl(filepath: str, offset: int = 0):
+    """Parse project session JSONL — full conversations."""
+    records = []
+    source_file = str(filepath)
+    project = derive_project(source_file)
+    machine = derive_machine(source_file)
+
+    with open(filepath, "rb") as f:
+        f.seek(offset)
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            rtype = d.get("type", "")
+            if rtype in SKIP_TYPES:
+                continue
+            if rtype not in ("user", "assistant"):
+                continue
+
+            text = extract_text_content(d.get("message"))
+            if not text:
+                continue
+
+            session_id = d.get("sessionId")
+            ts = d.get("timestamp")
+
+            records.append({
+                "source_file": source_file,
+                "session_id": session_id,
+                "project": project,
+                "role": rtype,
+                "content": text,
+                "timestamp": ts,
+                "machine": machine,
+            })
+        new_offset = f.tell()
+    return records, new_offset
+
+
+def parse_interaction_jsonl(filepath: str, offset: int = 0):
+    """Parse wormhole interaction logs (ec2/llm format)."""
+    records = []
+    source_file = str(filepath)
+    machine = derive_machine(source_file)
+
+    with open(filepath, "rb") as f:
+        f.seek(offset)
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            ts = d.get("ts")
+            data = d.get("data", {})
+            if not isinstance(data, dict):
+                continue
+
+            prompt = data.get("prompt", "").strip()
+            session_id = data.get("session_id")
+
+            if prompt:
+                records.append({
+                    "source_file": source_file,
+                    "session_id": session_id,
+                    "project": None,
+                    "role": "user",
+                    "content": prompt,
+                    "timestamp": ts,
+                    "machine": machine,
+                })
+
+            # Some records have response too
+            response = data.get("response", "").strip() if isinstance(data.get("response"), str) else ""
+            if response:
+                records.append({
+                    "source_file": source_file,
+                    "session_id": session_id,
+                    "project": None,
+                    "role": "assistant",
+                    "content": response,
+                    "timestamp": ts,
+                    "machine": machine,
+                })
+
+            # Handle sentiment/context notes as metadata
+            note = d.get("note", "").strip()
+            rtype = d.get("type", "")
+            if note and rtype in ("sentiment", "context"):
+                records.append({
+                    "source_file": source_file,
+                    "session_id": session_id,
+                    "project": None,
+                    "role": "user",
+                    "content": f"[{rtype}] {note}",
+                    "timestamp": ts,
+                    "machine": machine,
+                })
+        new_offset = f.tell()
+    return records, new_offset
+
+
+def discover_sources():
+    """Find all JSONL source files."""
+    sources = []
+
+    # history.jsonl
+    if HISTORY_FILE.exists():
+        sources.append(("history", str(HISTORY_FILE)))
+
+    # Project session JONLs
+    if PROJECTS_DIR.exists():
+        for project_dir in PROJECTS_DIR.iterdir():
+            if project_dir.is_dir():
+                for jsonl in project_dir.glob("*.jsonl"):
+                    sources.append(("project", str(jsonl)))
+
+    # Wormhole interaction logs (direct JSONL files like ec2-claude-interactions.jsonl)
+    if WORMHOLE_LOGS.exists():
+        for jsonl in WORMHOLE_LOGS.glob("*.jsonl"):
+            sources.append(("interaction", str(jsonl)))
+
+    # Rsynced EC2 history
+    ec2_history = WORMHOLE_LOGS / "ec2-history.jsonl"
+    if ec2_history.exists():
+        sources.append(("history", str(ec2_history)))
+
+    # Rsynced EC2 project JONLs
+    ec2_projects = WORMHOLE_LOGS / "ec2-projects"
+    if ec2_projects.exists():
+        for project_dir in ec2_projects.iterdir():
+            if project_dir.is_dir():
+                for jsonl in project_dir.glob("*.jsonl"):
+                    sources.append(("project", str(jsonl)))
+
+    return sources
+
+
+def insert_records(conn, records):
+    """Insert records with deduplication via INSERT OR IGNORE."""
+    conn.executemany(
+        """INSERT OR IGNORE INTO messages
+           (source_file, session_id, project, role, content, timestamp, machine)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        [(r["source_file"], r["session_id"], r["project"],
+          r["role"], r["content"], r["timestamp"], r["machine"])
+         for r in records],
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Claude Memory ETL")
+    parser.add_argument("--full", action="store_true",
+                        help="Full re-ingest (ignore cursor state)")
+    parser.add_argument("--quiet", "-q", action="store_true",
+                        help="Suppress output when nothing changed")
+    args = parser.parse_args()
+
+    state = {} if args.full else load_state()
+    sources = discover_sources()
+
+    conn = sqlite3.connect(str(DB_PATH))
+    init_db(conn)
+
+    before_count = conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+    total_records = 0
+
+    for src_type, filepath in sources:
+        file_size = os.path.getsize(filepath)
+        prev_offset = state.get(filepath, 0)
+
+        if not args.full and prev_offset >= file_size:
+            continue  # No new data
+
+        offset = 0 if args.full else prev_offset
+
+        if src_type == "history":
+            records, new_offset = parse_history_file(filepath, offset)
+        elif src_type == "project":
+            records, new_offset = parse_project_jsonl(filepath, offset)
+        elif src_type == "interaction":
+            records, new_offset = parse_interaction_jsonl(filepath, offset)
+        else:
+            continue
+
+        if records:
+            insert_records(conn, records)
+            total_records += len(records)
+
+        state[filepath] = new_offset
+
+    conn.commit()
+    after_count = conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+    new_records = after_count - before_count
+
+    save_state(state)
+    conn.close()
+
+    if args.quiet and new_records == 0:
+        return
+
+    ts = datetime.now().isoformat(timespec="seconds")
+    print(f"[{ts}] Processed {len(sources)} sources, "
+          f"{total_records} records parsed, {new_records} new inserted "
+          f"(total: {after_count})")
+
+
+if __name__ == "__main__":
+    main()

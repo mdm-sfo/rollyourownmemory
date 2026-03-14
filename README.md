@@ -1,0 +1,372 @@
+# Roll Your Own Memory
+
+A local, private, fully self-hosted memory system for [Claude Code](https://code.claude.com). It gives Claude persistent memory across sessions — your past conversations, preferences, decisions, and learnings become searchable context that automatically informs future sessions.
+
+No cloud APIs. No data leaving your machine. Just SQLite, embeddings, and a local LLM.
+
+## Why
+
+Every Claude Code session starts from zero. It doesn't know your projects, your preferences, or that you solved the exact same problem last week. You re-explain context constantly.
+
+This system closes that loop:
+
+- **Passive recall** — a memory context file auto-injects your key facts, recent sessions, and tech stack into every session via `CLAUDE.md`
+- **Active recall** — search your full conversation history by keyword or meaning, mid-session, via MCP tools or slash commands
+- **Knowledge accumulation** — facts, preferences, and decisions are extracted from every conversation and build up over time
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Claude Code Session                    │
+│                                                          │
+│  CLAUDE.md ──▶ @memory-context.md (auto-generated)      │
+│                                                          │
+│  MCP Tools:  memory_search, memory_semantic_search,      │
+│              memory_search_facts, memory_add_fact,        │
+│              memory_get_session, memory_list_sessions,    │
+│              memory_find_entity                           │
+│                                                          │
+│  Slash Commands: /recall, /sessions, /session, /facts    │
+└──────────────┬───────────────────────────┬───────────────┘
+               │                           │
+               ▼                           ▼
+┌──────────────────────┐    ┌──────────────────────────────┐
+│     MCP Server       │    │      memory-context.md       │
+│   (mcp_server.py)    │    │   (auto-generated every      │
+│   stdio transport    │    │    30 min by inject.py)       │
+└──────────┬───────────┘    └──────────────┬───────────────┘
+           │                               │
+           ▼                               ▼
+┌──────────────────────────────────────────────────────────┐
+│                      memory.db (SQLite)                   │
+│                                                           │
+│  messages     — raw conversation messages + FTS5 index    │
+│  embeddings   — sentence-transformer vectors (float32)    │
+│  facts        — extracted preferences, decisions, etc.    │
+│  entities     — tools, libraries, services mentioned      │
+│  entity_mentions — links entities to messages/sessions    │
+└──────────┬────────────┬────────────┬─────────────────────┘
+           │            │            │
+           ▼            ▼            ▼
+┌──────────────┐ ┌────────────┐ ┌──────────────┐
+│  ingest.py   │ │  embed.py  │ │  distill.py  │
+│  (ETL from   │ │ (sentence- │ │ (LLM fact    │
+│  JSONL logs) │ │ transformers│ │  extraction) │
+│  every 15min │ │  hourly)   │ │   hourly)    │
+└──────────────┘ └────────────┘ └──────────────┘
+```
+
+## What's In the Box
+
+| File | Purpose |
+|------|---------|
+| `schema.sql` | SQLite schema: messages, embeddings, facts, entities with FTS5 indexes |
+| `ingest.py` | ETL pipeline: reads Claude Code JSONL logs → SQLite. Incremental via byte-offset cursors. |
+| `embed.py` | Generates sentence-transformer embeddings for semantic search. |
+| `distill.py` | Extracts structured facts from conversations using regex heuristics + local LLM (ollama). |
+| `entities.py` | Identifies tools, libraries, languages, platforms mentioned across conversations. |
+| `inject.py` | Generates `memory-context.md` for passive injection into CLAUDE.md. Project-aware via `$PWD`. |
+| `curate.py` | Interactive fact review, hand-curation, import/export. |
+| `claude-recall` | CLI search tool: keyword, semantic, sessions, facts. Backward-compatible with bare queries. |
+| `mcp_server.py` | MCP server exposing all memory functions as tools Claude Code can call directly. |
+
+## Setup
+
+### Prerequisites
+
+- Python 3.10+
+- [Claude Code](https://code.claude.com) installed
+- [ollama](https://ollama.com) (optional, for LLM-powered fact extraction)
+- GPU recommended for embeddings (works on CPU, just slower)
+
+### 1. Clone and install
+
+```bash
+git clone https://github.com/mdm-sfo/rollyourownmemory.git
+cd rollyourownmemory
+
+python3 -m venv .venv
+.venv/bin/pip install sentence-transformers numpy httpx
+```
+
+### 2. Initialize the database
+
+```bash
+python3 -c "
+import sqlite3
+conn = sqlite3.connect('memory.db')
+conn.executescript(open('schema.sql').read())
+conn.close()
+print('Database initialized')
+"
+```
+
+### 3. Run the initial ingest
+
+```bash
+python3 ingest.py
+```
+
+This reads your Claude Code conversation logs from:
+- `~/.claude/history.jsonl` — user prompts with metadata
+- `~/.claude/projects/*/` — full session transcripts (user + assistant)
+
+The ingest is incremental — it tracks byte offsets in `state.json` so re-runs only process new data.
+
+### 4. Generate embeddings
+
+```bash
+.venv/bin/python embed.py build
+```
+
+This creates a vector embedding for every message using `all-MiniLM-L6-v2` (384 dimensions). On a GPU, ~13K messages take about 2 minutes. On CPU, ~10 minutes.
+
+### 5. Extract facts (optional but recommended)
+
+**Heuristic only (no LLM needed):**
+```bash
+python3 distill.py run
+```
+
+**With local LLM (much higher quality):**
+```bash
+# Install ollama: https://ollama.com
+ollama pull llama3.2          # 3B, fast, decent quality
+# OR for much better results if you have the RAM:
+ollama pull llama3.3:70b      # 70B, needs ~50GB RAM, excellent quality
+
+.venv/bin/python distill.py run --llm
+```
+
+### 6. Extract entities
+
+```bash
+python3 entities.py run
+```
+
+### 7. Set up the MCP server
+
+Add to `~/.claude/settings.local.json` under `mcpServers`:
+
+```json
+{
+  "mcpServers": {
+    "memory": {
+      "command": "/path/to/rollyourownmemory/.venv/bin/python",
+      "args": ["/path/to/rollyourownmemory/mcp_server.py"]
+    }
+  }
+}
+```
+
+Restart Claude Code. The memory tools are now available in every session.
+
+### 8. Set up passive context injection
+
+Add to your `~/.claude/CLAUDE.md`:
+
+```markdown
+## Memory
+
+You have access to memory tools (`memory_search`, `memory_semantic_search`, `memory_search_facts`, etc.) that search my full conversation history. Use them proactively when:
+- I reference past work or decisions vaguely
+- A task might benefit from knowing what I've done before
+- I ask you to remember something (use `memory_add_fact`)
+
+@memory-context.md
+```
+
+Generate the initial context file:
+
+```bash
+.venv/bin/python inject.py -o ~/.claude/memory-context.md
+```
+
+### 9. Set up cron (keeps everything fresh automatically)
+
+```bash
+crontab -e
+```
+
+Add:
+
+```cron
+# Ingest new conversations every 15 minutes (uses stdlib only, no venv needed)
+*/15 * * * * python3 /path/to/rollyourownmemory/ingest.py --quiet >> /path/to/rollyourownmemory/ingest.log 2>&1
+
+# Embed, distill, and extract entities hourly
+0 * * * * /path/to/rollyourownmemory/.venv/bin/python /path/to/rollyourownmemory/embed.py build >> /path/to/rollyourownmemory/ingest.log 2>&1
+15 * * * * /path/to/rollyourownmemory/.venv/bin/python /path/to/rollyourownmemory/distill.py run >> /path/to/rollyourownmemory/ingest.log 2>&1
+15 * * * * /path/to/rollyourownmemory/.venv/bin/python /path/to/rollyourownmemory/entities.py run >> /path/to/rollyourownmemory/ingest.log 2>&1
+
+# Refresh context injection file every 30 minutes
+*/30 * * * * /path/to/rollyourownmemory/.venv/bin/python /path/to/rollyourownmemory/inject.py --no-detect -o ~/.claude/memory-context.md 2>>/path/to/rollyourownmemory/ingest.log
+```
+
+If you want LLM-powered distillation on the cron, change the `distill.py` line to include `--llm`.
+
+## Usage
+
+### MCP Tools (automatic, in-session)
+
+Claude Code will call these automatically when relevant. You can also ask directly:
+
+- *"Search my memory for when I set up the websocket server"*
+- *"What did I decide about the database schema for the CRM?"*
+- *"Remember that I prefer Tailwind over vanilla CSS"*
+- *"What sessions have I had about the tribunal project?"*
+- *"What tools do I use most frequently?"*
+
+### Slash Commands (manual, in-session)
+
+```
+/recall websocket debugging     # keyword + semantic search
+/sessions                        # list recent sessions
+/session 98a4a724               # view full conversation thread
+/facts authentication            # search extracted facts
+/curate                          # review and curate facts
+```
+
+### CLI (outside Claude Code)
+
+```bash
+# Keyword search
+./claude-recall kalshi
+
+# Semantic search
+.venv/bin/python claude-recall search "that time the trading bot crashed" --semantic
+
+# List sessions
+./claude-recall sessions --limit 10
+
+# View a session
+./claude-recall session 98a4a724
+
+# Search facts
+./claude-recall facts python --category preference
+
+# Generate project-specific context
+.venv/bin/python inject.py --project myproject
+```
+
+### Fact Curation
+
+The system auto-extracts facts, but hand-curated facts are the highest value:
+
+```bash
+# Interactive review of auto-extracted facts
+python3 curate.py review
+
+# Import facts from a markdown file
+cp curated-facts.example.md curated-facts.md
+# Edit curated-facts.md with your facts, then:
+python3 curate.py import curated-facts.md
+
+# Export high-confidence facts
+python3 curate.py export
+
+# View stats
+python3 curate.py stats
+```
+
+## Project-Aware Context
+
+`inject.py` auto-detects the current project from `$PWD` and filters the context accordingly. When you run Claude Code from `~/myproject/`, the memory context emphasizes facts and sessions related to that project.
+
+To add your own projects, edit the `PROJECT_ALIASES` dict in `inject.py`:
+
+```python
+PROJECT_ALIASES = {
+    "myproject": "myproject",
+    "my-other-project": "other",
+}
+```
+
+## Multi-Machine Support
+
+If you work across multiple machines:
+
+1. **Sync conversation logs** to one machine (rsync, Resilio Sync, Syncthing, etc.)
+2. Run the ingest/embed/distill pipeline on that machine
+3. The MCP server runs on the machine with the database
+
+The `ingest.py` script supports custom source directories. See `discover_sources()` for the paths it checks.
+
+## Schema
+
+```sql
+messages        — id, source_file, session_id, project, role, content, timestamp, machine
+embeddings      — message_id, embedding (float32 blob), model
+facts           — id, session_id, project, fact, category, confidence, source_message_id
+entities        — id, name, entity_type, first_seen, last_seen, mention_count
+entity_mentions — id, entity_id, message_id, session_id, timestamp
+```
+
+FTS5 indexes on `messages.content` and `facts.fact` for fast keyword search. Porter stemming enabled.
+
+## How the Pieces Fit Together
+
+1. **You use Claude Code normally.** Conversations are saved as JSONL by Claude Code itself.
+2. **`ingest.py`** (cron, every 15 min) reads new JSONL data into SQLite.
+3. **`embed.py`** (cron, hourly) generates vector embeddings for new messages.
+4. **`distill.py`** (cron, hourly) extracts facts from new sessions using regex + optionally a local LLM.
+5. **`entities.py`** (cron, hourly) identifies tools/libraries/services mentioned.
+6. **`inject.py`** (cron, every 30 min) generates `memory-context.md` with top facts, recent sessions, and active tech stack.
+7. **`CLAUDE.md`** includes `@memory-context.md`, so every new session starts with context.
+8. **`mcp_server.py`** lets Claude query the database directly mid-session for deeper recall.
+
+## Configuration
+
+### Embedding Model
+
+Default: `all-MiniLM-L6-v2` (fast, 384 dimensions, ~90MB). To use a different model:
+
+```bash
+.venv/bin/python embed.py build --model all-mpnet-base-v2
+```
+
+Note: changing models requires re-embedding all messages.
+
+### LLM for Distillation
+
+Default: `llama3.2` (3B). For higher quality extraction with more RAM:
+
+```bash
+ollama pull llama3.3:70b
+```
+
+Then edit `distill.py` and change the model name in `extract_facts_llm()`.
+
+### Context Budget
+
+`inject.py` defaults to ~2000 tokens (~8KB) of context. Adjust with `--max-tokens`:
+
+```bash
+.venv/bin/python inject.py --max-tokens 3000 -o ~/.claude/memory-context.md
+```
+
+## Maintenance
+
+**Monthly (~5 min):**
+- Run `python3 curate.py review` to approve/reject auto-extracted facts
+- Check `ingest.log` for errors, truncate if large
+
+**Quarterly (~15 min):**
+- Review and update your `CLAUDE.md` files as projects evolve
+- Update `PROJECT_ALIASES` in `inject.py` for new projects
+- Update `KNOWN_ENTITIES` in `entities.py` for new tools you've adopted
+
+**The single highest-value maintenance task** is occasionally hand-curating 10-20 facts in `curated-facts.md` and running `python3 curate.py import curated-facts.md`. These confidence-1.0 facts always surface first in context injection.
+
+## Privacy
+
+- **Everything is local.** No data is sent to any external service.
+- Embeddings are generated locally via sentence-transformers.
+- Fact extraction uses a local LLM (ollama) or regex heuristics.
+- The database, embeddings, and state files are in `.gitignore`.
+- The MCP server communicates via stdio (no network port).
+
+## License
+
+MIT
