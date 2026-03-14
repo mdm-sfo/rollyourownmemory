@@ -212,11 +212,11 @@ If you want LLM-powered distillation on the cron, change the `distill.py` line t
 
 Claude Code will call these automatically when relevant. You can also ask directly:
 
-- *"Search my memory for when I set up the websocket server"*
-- *"What did I decide about the database schema for the CRM?"*
-- *"Remember that I prefer Tailwind over vanilla CSS"*
-- *"What sessions have I had about the tribunal project?"*
-- *"What tools do I use most frequently?"*
+- *"Didn't I fix this exact error last week?"*
+- *"What did we decide about the auth architecture?"*
+- *"Remember that I prefer Postgres over MySQL for new projects"*
+- *"Show me my recent sessions about the API refactor"*
+- *"What libraries have I been using for this project?"*
 
 ### Slash Commands (manual, in-session)
 
@@ -369,4 +369,4 @@ Then edit `distill.py` and change the model name in `extract_facts_llm()`.
 
 ## License
 
-MIT
+[CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/) — free to use, share, and adapt for non-commercial purposes with attribution.
