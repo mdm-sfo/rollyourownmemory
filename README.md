@@ -40,7 +40,7 @@ Databases:      sqlite(10x), postgres(6x)
 Protocols:      ssh(77x), http(76x), websocket(20x)
 ```
 
-When you ask *"What testing libraries have I actually been using? I want to standardize."* — the answer comes from your real usage patterns, not guesswork.
+When you ask *"What testing libraries have I actually been using over the last eight weeks? I want to standardize."* — the answer comes from your real usage patterns, not guesswork.
 
 ## Architecture
 
