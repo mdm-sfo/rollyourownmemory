@@ -40,8 +40,6 @@ Databases:      sqlite(10x), postgres(6x)
 Protocols:      ssh(77x), http(76x), websocket(20x)
 ```
 
-When you ask *"What testing libraries have I actually been using over the last eight weeks? I want to standardize."* — the answer comes from your real usage patterns, not guesswork.
-
 ## Architecture
 
 ```
@@ -266,7 +264,7 @@ Claude Code calls these automatically when relevant. You can also ask directly. 
 > Semantic search finds the session even if you don't remember which project, what you called it, or the exact words you used.
 
 **Know your own stack:**
-> *"What testing libraries have I actually been using? I want to standardize."*
+> *"What testing libraries have I actually been using over the last eight weeks? I want to standardize."*
 >
 > Claude queries your entity graph: "pytest mentioned 45x, playwright 20x, jest 3x" — decisions based on your actual usage, not guesswork.
 
