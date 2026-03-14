@@ -210,13 +210,37 @@ If you want LLM-powered distillation on the cron, change the `distill.py` line t
 
 ### MCP Tools (automatic, in-session)
 
-Claude Code will call these automatically when relevant. You can also ask directly:
+Claude Code calls these automatically when relevant. You can also ask directly. Here are real scenarios where memory saves you time:
 
-- *"Didn't I fix this exact error last week?"*
-- *"What did we decide about the auth architecture?"*
-- *"Remember that I prefer Postgres over MySQL for new projects"*
-- *"Show me my recent sessions about the API refactor"*
-- *"What libraries have I been using for this project?"*
+**Fix it the same way as last time:**
+> *"We had this exact CORS error last week on the dashboard project. Look up how we fixed it and do the same thing here."*
+>
+> Claude searches your memory, finds the session where you resolved it, sees you added specific middleware config, and applies the same fix — no re-debugging.
+
+**Don't lose architectural decisions:**
+> *"What did we decide about the auth architecture? I don't want to re-hash this."*
+>
+> Claude pulls up the extracted fact: "Decision: using JWT with refresh tokens, storing in httpOnly cookies, 15-min access / 7-day refresh." You pick up where you left off.
+
+**Stop repeating your preferences:**
+> *"Remember that I prefer Postgres over MySQL for new projects."*
+>
+> Claude stores this as a fact with confidence 1.0. Every future session where database selection comes up, it already knows.
+
+**Recover context after stepping away:**
+> *"What was I working on yesterday? I had a session going about the payment integration."*
+>
+> Claude lists your recent sessions, finds the one about Stripe webhooks, and summarizes where you left off — including the file you were editing and the test that was still failing.
+
+**Reuse code patterns across projects:**
+> *"I built a retry wrapper with exponential backoff in another project a few weeks ago. Find it."*
+>
+> Semantic search finds the session even if you don't remember which project, what you called it, or the exact words you used.
+
+**Know your own stack:**
+> *"What testing libraries have I actually been using? I want to standardize."*
+>
+> Claude queries your entity graph: "pytest mentioned 45x, playwright 20x, jest 3x" — decisions based on your actual usage, not guesswork.
 
 ### Slash Commands (manual, in-session)
 
@@ -232,19 +256,19 @@ Claude Code will call these automatically when relevant. You can also ask direct
 
 ```bash
 # Keyword search
-./claude-recall kalshi
+./claude-recall docker networking
 
-# Semantic search
-.venv/bin/python claude-recall search "that time the trading bot crashed" --semantic
+# Semantic search (finds by meaning, not just keywords)
+.venv/bin/python claude-recall search "that time the deploy script broke" --semantic
 
-# List sessions
+# List recent sessions
 ./claude-recall sessions --limit 10
 
-# View a session
-./claude-recall session 98a4a724
+# View a full conversation thread
+./claude-recall session a1b2c3d4
 
-# Search facts
-./claude-recall facts python --category preference
+# Search extracted facts
+./claude-recall facts database --category decision
 
 # Generate project-specific context
 .venv/bin/python inject.py --project myproject
