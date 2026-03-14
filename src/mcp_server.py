@@ -8,7 +8,7 @@ from typing import Optional
 
 from mcp.server import FastMCP
 
-MEMORY_DIR = Path(__file__).parent
+MEMORY_DIR = Path(__file__).parent.parent
 DB_PATH = MEMORY_DIR / "memory.db"
 
 mcp = FastMCP("claude-memory")

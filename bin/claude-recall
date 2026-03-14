@@ -6,8 +6,11 @@ import sqlite3
 import sys
 from pathlib import Path
 
-MEMORY_DIR = Path(__file__).parent
+MEMORY_DIR = Path(__file__).parent.parent
 DB_PATH = MEMORY_DIR / "memory.db"
+
+# Add src/ to path for imports
+sys.path.insert(0, str(MEMORY_DIR / "src"))
 
 if not DB_PATH.exists():
     DB_PATH = Path.home() / "wormhole" / "claude-memory" / "memory.db"

@@ -9,7 +9,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-MEMORY_DIR = Path(__file__).parent
+MEMORY_DIR = Path(__file__).parent.parent
 DB_PATH = MEMORY_DIR / "memory.db"
 
 # Typed entity dictionaries — entity_name -> entity_type

@@ -13,7 +13,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-MEMORY_DIR = Path(__file__).parent
+MEMORY_DIR = Path(__file__).parent.parent
 DB_PATH = MEMORY_DIR / "memory.db"
 CURATE_FILE = MEMORY_DIR / "curated-facts.md"
 

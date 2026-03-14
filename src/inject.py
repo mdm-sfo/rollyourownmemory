@@ -21,7 +21,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-MEMORY_DIR = Path(__file__).parent
+MEMORY_DIR = Path(__file__).parent.parent
 DB_PATH = MEMORY_DIR / "memory.db"
 
 # Map directory names/keywords to project filter strings used in the DB

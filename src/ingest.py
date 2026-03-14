@@ -10,7 +10,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-MEMORY_DIR = Path(__file__).parent
+MEMORY_DIR = Path(__file__).parent.parent
 DB_PATH = MEMORY_DIR / "memory.db"
 STATE_PATH = MEMORY_DIR / "state.json"
 SCHEMA_PATH = MEMORY_DIR / "schema.sql"

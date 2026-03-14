@@ -7,7 +7,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-MEMORY_DIR = Path(__file__).parent
+MEMORY_DIR = Path(__file__).parent.parent
 DB_PATH = MEMORY_DIR / "memory.db"
 
 DEFAULT_MODEL = "all-MiniLM-L6-v2"
