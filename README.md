@@ -14,8 +14,7 @@ This fixes that.
 
 **Roll Your Own Memory** gives Claude Code persistent, searchable memory across every session — fully local, fully private, no cloud APIs.
 
-<!-- TODO: Add demo GIF here -->
-<!-- ![Demo](demo.gif) -->
+![Demo](demo.gif)
 
 ### How it works
 
