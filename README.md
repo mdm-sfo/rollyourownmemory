@@ -1,18 +1,29 @@
 # Roll Your Own Memory
 
-A local, private, fully self-hosted memory system for [Claude Code](https://code.claude.com). It gives Claude persistent memory across sessions — your past conversations, preferences, decisions, and learnings become searchable context that automatically informs future sessions.
+[![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![SQLite](https://img.shields.io/badge/storage-SQLite-003B57.svg)](https://sqlite.org)
+[![MCP](https://img.shields.io/badge/MCP-compatible-brightgreen.svg)](https://modelcontextprotocol.io)
+[![100% Local](https://img.shields.io/badge/privacy-100%25%20local-success.svg)](#privacy)
 
-No cloud APIs. No data leaving your machine. Just SQLite, embeddings, and a local LLM.
+> **"Dude, we literally fixed this exact same bug two weeks ago. Why don't you remember that?"**
 
-## Why
+That's the problem. Every Claude Code session starts from zero. It doesn't know your projects, your preferences, or that you debugged this identical stack trace last Tuesday. You re-explain context constantly. You lose decisions. You repeat yourself.
 
-Every Claude Code session starts from zero. It doesn't know your projects, your preferences, or that you solved the exact same problem last week. You re-explain context constantly.
+This fixes that.
 
-This system closes that loop:
+**Roll Your Own Memory** gives Claude Code persistent, searchable memory across every session — fully local, fully private, no cloud APIs.
+
+<!-- TODO: Add demo GIF here -->
+<!-- ![Demo](demo.gif) -->
+
+### How it works
 
 - **Passive recall** — a memory context file auto-injects your key facts, recent sessions, and tech stack into every session via `CLAUDE.md`
 - **Active recall** — search your full conversation history by keyword or meaning, mid-session, via MCP tools or slash commands
 - **Knowledge accumulation** — facts, preferences, and decisions are extracted from every conversation and build up over time
+
+No external services. No API keys. Just SQLite, local embeddings, and an optional local LLM.
 
 ## What 8 Weeks of Memory Looks Like
 
