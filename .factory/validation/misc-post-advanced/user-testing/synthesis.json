@@ -1,0 +1,17 @@
+{
+  "milestone": "misc-post-advanced",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 0,
+    "passed": 0,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "notes": "The misc-post-advanced milestone has one implementation feature (misc-non-blocking-fixes) with fulfills: []. No assertions are mapped to this milestone. All 16 pending assertions belong to the advanced-features milestone and will be tested by user-testing-validator-advanced-features. Environment verified: 26 tests passing, all Python files syntactically valid.",
+  "previousRound": null
+}
