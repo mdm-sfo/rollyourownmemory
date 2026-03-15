@@ -1,0 +1,39 @@
+{
+  "featureId": "compressed-details-schema",
+  "reviewedAt": "2026-03-15T12:55:00.000Z",
+  "commitId": "553ddc6",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation fully satisfies all 6 validation assertions. schema.sql correctly adds compressed_details TEXT column to facts table after last_validated, updates facts_fts to include compressed_details as a third indexed column, and updates all 3 FTS triggers (facts_ai, facts_au, facts_ad) to include compressed_details in their INSERT statements. Migration comment block at top of schema.sql provides manual upgrade instructions. memory_db.py migrate_schema() adds Migration 2 (ALTER TABLE for column) and Migration 3 (detect stale FTS schema via sqlite_master inspection, then drop triggers, drop+recreate facts_fts, recreate triggers, rebuild FTS index). The FTS5 drop-and-recreate approach is correct since FTS5 virtual tables cannot be ALTERed. Schema validates cleanly with sqlite3 :memory:. Existing migrations renumbered to 4 and 5 correctly.",
+    "issues": [
+      {
+        "file": "src/memory_db.py",
+        "line": 255,
+        "severity": "non_blocking",
+        "description": "store_fact() does not accept a compressed_details parameter, so facts inserted via store_fact() will always have NULL for compressed_details. This is expected to be addressed by a subsequent feature (likely the distill feature that populates compressed_details), but is worth noting as a gap in the current API surface."
+      },
+      {
+        "file": "src/memory_db.py",
+        "line": 37,
+        "severity": "non_blocking",
+        "description": "The FTS rebuild detection uses integrity-check followed by sqlite_master sql inspection. The integrity-check call may be slightly expensive on large databases, though this runs only once during migration. An alternative would be to only check sqlite_master, but the current approach is defensive and correct."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md already documents that FTS5 virtual tables cannot be ALTERed and must be dropped/recreated, and that FTS triggers must match the FTS5 column list exactly. The worker followed these conventions correctly. No gaps found.",
+      "evidence": "AGENTS.md Key Architecture Notes section covers FTS5 drop/recreate pattern. Diff shows worker correctly used DROP TABLE IF EXISTS + CREATE VIRTUAL TABLE + trigger recreation."
+    },
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md notes that store_fact() in memory_db.py is the single point for fact insertion, but doesn't document that new columns added to facts table should also be added as parameters to store_fact(). This could lead to future workers forgetting to update the function signature when adding columns.",
+      "evidence": "store_fact() at memory_db.py:255 still only accepts fact, category, confidence, project, session_id, source_message_id, timestamp, last_validated — no compressed_details parameter. The feature description didn't require it, but AGENTS.md could clarify the expectation."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The compressed-details-schema feature is correctly implemented. schema.sql has the new column in the facts table, facts_fts includes compressed_details as a third indexed column, all 3 FTS triggers are updated, a migration comment block is present at the top of schema.sql, and migrate_schema() in memory_db.py handles the upgrade path for existing databases (column addition via ALTER TABLE, FTS5 drop/recreate, trigger recreation, and FTS rebuild). Schema validates cleanly. Two non-blocking observations: store_fact() doesn't yet accept compressed_details (expected to be added by a later feature), and the FTS rebuild detection could be slightly simplified but is correct as-is."
+}

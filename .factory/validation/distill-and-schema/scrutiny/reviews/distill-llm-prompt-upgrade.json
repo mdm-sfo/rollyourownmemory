@@ -1,0 +1,34 @@
+{
+  "featureId": "distill-llm-prompt-upgrade",
+  "reviewedAt": "2026-03-15T12:55:00.000Z",
+  "commitId": "796a64e2c7e6da6096ceb720bda59ff6e52c2241",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation correctly covers all 5 validation assertions. The extract_facts_llm() function signature was updated with existing_facts=None, the LLM prompt now requests compressed_details and includes dedup instructions for existing facts, fact parsing extracts compressed_details with a 500-char limit, distill() loads top-50 existing facts before the session loop and passes them to extract_facts_llm(), and the model default remains llama3.3:70b. The diff is clean (34 insertions, 3 deletions in src/distill.py only), all 12 existing tests pass, and the code follows established patterns (lazy imports for httpx, argparse CLI, stderr logging).",
+    "issues": [
+      {
+        "file": "src/distill.py",
+        "line": 119,
+        "severity": "non_blocking",
+        "description": "The existing_facts parameter lacks a type annotation (should be `existing_facts: list[str] | None = None`). AGENTS.md requires 'Type hints on ALL new functions' — while this is a parameter addition to an existing function (which itself lacks type annotations on session_messages and api_base), the docstring does document the type. Consistent with existing style but technically a convention gap."
+      },
+      {
+        "file": "src/distill.py",
+        "line": 450,
+        "severity": "non_blocking",
+        "description": "existing_facts is loaded once before the session loop and not refreshed as new facts are stored during the run. If distilling many sessions in one batch, later sessions won't see facts extracted from earlier sessions in the dedup context. However, the store_facts() embedding-based dedup catches duplicates at insert time, and the feature description explicitly says 'load existing facts before session loop', so this is by design. Only relevant for large batch distillation runs."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md says 'Type hints on ALL new functions' but several existing function signatures in distill.py (extract_facts_llm, extract_facts_heuristic) lack type annotations on their parameters (e.g., session_messages, api_base). The convention could be clarified to distinguish between 'new functions' vs 'new parameters on existing functions', or broadened to include 'all new parameters'.",
+      "evidence": "src/distill.py:119 — existing_facts parameter has no type hint, but neither do session_messages or api_base on line 118. AGENTS.md states 'Type hints on ALL new functions'."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The feature correctly implements all 5 validation assertions (VAL-DISTILL-001 through VAL-DISTILL-004 and VAL-DISTILL-008). The diff is minimal and surgical (34 insertions, 3 deletions), the prompt upgrade is well-structured with proper dedup instructions, compressed_details parsing is correctly integrated into both the normal and retry code paths via _parse_llm_facts(), and the model default is preserved. Two non-blocking observations: missing type annotation on the new parameter (consistent with existing style), and existing_facts not refreshed during batch runs (by design, mitigated by store-level dedup). All 12 existing tests pass."
+}

@@ -1,0 +1,28 @@
+{
+  "featureId": "distill-retry-and-store",
+  "reviewedAt": "2026-03-15T12:50:00.000Z",
+  "commitId": "93f5f30",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation correctly adds three-level retry to extract_facts_llm() and updates store_facts() INSERT to include compressed_details. The worker extracted a _parse_llm_facts() helper to DRY the JSON parsing logic shared by both retry levels. Level 1 uses temp 0.1 / timeout 180s, Level 2 uses temp 0.05 / timeout 90s, and Level 3 returns [] for heuristic fallback. Both escalations log to stderr with the failure reason. The store_facts() INSERT correctly adds compressed_details as the 8th column with f.get('compressed_details', '') to handle facts without the field. Dedup logic (embedding cosine similarity) is fully preserved.",
+    "issues": [
+      {
+        "file": "src/distill.py",
+        "line": 199,
+        "severity": "non_blocking",
+        "description": "If the LLM returns {\"compressed_details\": null} (JSON null), f.get(\"compressed_details\", \"\") returns None (key exists, value is None), and None[:500] raises TypeError. This would cause _parse_llm_facts to fail even when valid facts are present, triggering unnecessary retry/fallback. Safer: (f.get(\"compressed_details\") or \"\")[:500]. Low practical risk since the prompt asks for a string, and the retry would catch it, but valid facts could be lost."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "No unit tests were added for the retry logic. The worker correctly noted that testing would require mocking httpx, which is beyond feature scope. However, this leaves a gap in test coverage for a non-trivial control flow change (three try/except blocks with different parameters). A future feature or skill update could suggest a pattern for mocking httpx in tests.",
+      "evidence": "Handoff tests.coverage: 'No new tests added — this feature modifies runtime behavior of LLM extraction (retry/fallback) and an INSERT statement. The retry logic would require mocking httpx to test, which is beyond the feature scope.'"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The three-level retry in extract_facts_llm() is correctly structured: Level 1 (temp 0.1, timeout 180s) → Level 2 (temp 0.05, timeout 90s) → return [] for heuristic fallback. Each escalation logs to stderr with the failure reason. The store_facts() INSERT correctly includes compressed_details as the 8th column while preserving existing embedding-based dedup logic. One non-blocking issue: compressed_details could be JSON null from the LLM, causing a TypeError on slice — low practical risk. All four validation assertions (VAL-DISTILL-005 through VAL-DISTILL-008) are satisfied."
+}

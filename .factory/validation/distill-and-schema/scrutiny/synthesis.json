@@ -1,0 +1,70 @@
+{
+  "milestone": "distill-and-schema",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": { "passed": true, "command": "cd /home/matthewmurray/claude-memory && .venv/bin/python -m pytest tests/ -v", "exitCode": 0 },
+    "typecheck": { "passed": true, "command": "echo \"No typecheck configured (no mypy/pyright in project)\"", "exitCode": 0 },
+    "lint": { "passed": true, "command": "echo \"No linter configured\"", "exitCode": 0 }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "nonBlockingIssues": [
+    {
+      "featureId": "compressed-details-schema",
+      "severity": "non_blocking",
+      "description": "store_fact() in memory_db.py does not yet accept compressed_details parameter. Facts inserted via store_fact() will have NULL for compressed_details. Expected to be addressed by a later milestone feature."
+    },
+    {
+      "featureId": "compressed-details-schema",
+      "severity": "non_blocking",
+      "description": "FTS rebuild detection uses integrity-check + sqlite_master inspection which may be slightly expensive on large databases, but runs only once during migration and is correct."
+    },
+    {
+      "featureId": "distill-llm-prompt-upgrade",
+      "severity": "non_blocking",
+      "description": "existing_facts parameter on extract_facts_llm() lacks type annotation. Consistent with existing function style (other params also lack annotations)."
+    },
+    {
+      "featureId": "distill-llm-prompt-upgrade",
+      "severity": "non_blocking",
+      "description": "existing_facts loaded once before session loop, not refreshed during batch runs. By design — store_facts() embedding dedup catches duplicates at insert time."
+    },
+    {
+      "featureId": "distill-retry-and-store",
+      "severity": "non_blocking",
+      "description": "If LLM returns {\"compressed_details\": null}, f.get(\"compressed_details\", \"\") returns None, and None[:500] raises TypeError. Low practical risk since prompt asks for string and retry catches it."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add convention: When adding new columns to the facts table (or any table), workers should also update the corresponding store_*() function in memory_db.py to accept and insert the new column. This prevents gaps in the API surface.",
+      "evidence": "compressed-details-schema feature added compressed_details column to facts table and FTS but did not update store_fact() in memory_db.py. The distill-retry-and-store feature addressed it in store_facts() in distill.py instead. AGENTS.md currently says 'All store_fact() calls go through memory_db.py' but doesn't mention updating it when adding columns.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add testing guidance: For features that modify LLM-dependent control flow (retry logic, fallback chains), workers should add unit tests with httpx mocking. Suggest a pattern using unittest.mock.patch for the httpx.post call.",
+      "evidence": "distill-retry-and-store feature added three-level retry logic with different temperatures and timeouts but no unit tests. Worker noted mocking httpx was beyond feature scope. This leaves a coverage gap for non-trivial control flow.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "AGENTS.md type hint convention should be clarified to distinguish 'new functions' vs 'new parameters on existing functions' — existing_facts param lacks type annotation.",
+      "reason": "Ambiguous. The existing codebase consistently lacks type annotations on these older functions. Enforcing annotations on new parameters of existing unannotated functions would create inconsistency within the same function signature. The current AGENTS.md wording 'Type hints on ALL new functions' is sufficient."
+    },
+    {
+      "observation": "AGENTS.md already documents FTS5 drop/recreate pattern correctly. No gaps found.",
+      "reason": "Already documented — no action needed. This is a confirmation, not a gap."
+    }
+  ],
+  "previousRound": null
+}
