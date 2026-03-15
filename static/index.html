@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Memory</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <nav class="nav-bar">
+        <div class="nav-brand">Claude Memory</div>
+        <div class="nav-links">
+            <a href="#" class="nav-link active" data-section="search">Search</a>
+            <a href="#" class="nav-link" data-section="facts">Facts</a>
+            <a href="#" class="nav-link" data-section="sessions">Sessions</a>
+            <a href="#" class="nav-link" data-section="claude-md">CLAUDE.md</a>
+            <a href="#" class="nav-link" data-section="context-preview">Context Preview</a>
+        </div>
+    </nav>
+
+    <main class="content">
+        <!-- Search Section -->
+        <section id="section-search" class="section active">
+            <div class="search-container">
+                <div class="mode-toggle">
+                    <button class="mode-tab active" data-mode="search">Search</button>
+                    <button class="mode-tab" data-mode="ask">Ask</button>
+                </div>
+                <div class="search-bar">
+                    <input type="text" id="search-input" placeholder="Search your memory..." autocomplete="off">
+                    <button id="search-btn" class="btn-primary">Go</button>
+                </div>
+            </div>
+            <div id="search-results" class="results-container"></div>
+        </section>
+
+        <!-- Facts Section -->
+        <section id="section-facts" class="section">
+            <h2>Facts</h2>
+            <div id="facts-content" class="section-content">
+                <p>Fact management coming soon.</p>
+            </div>
+        </section>
+
+        <!-- Sessions Section -->
+        <section id="section-sessions" class="section">
+            <h2>Sessions</h2>
+            <div id="sessions-content" class="section-content">
+                <p>Session browser coming soon.</p>
+            </div>
+        </section>
+
+        <!-- CLAUDE.md Section -->
+        <section id="section-claude-md" class="section">
+            <h2>CLAUDE.md Editor</h2>
+            <div id="claude-md-content" class="section-content">
+                <p>CLAUDE.md editor coming soon.</p>
+            </div>
+        </section>
+
+        <!-- Context Preview Section -->
+        <section id="section-context-preview" class="section">
+            <h2>Context Preview</h2>
+            <div id="context-preview-content" class="section-content">
+                <p>Memory context preview coming soon.</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
