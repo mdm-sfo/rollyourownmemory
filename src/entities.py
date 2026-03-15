@@ -204,7 +204,9 @@ def get_unprocessed_messages(conn, limit=None):
         SELECT m.id, m.session_id, m.content, m.timestamp, m.role
         FROM messages m
         WHERE m.role = 'user'
-        AND m.id NOT IN (SELECT DISTINCT message_id FROM entity_mentions)
+        AND m.id NOT IN (
+            SELECT message_id FROM processed_messages WHERE processor = 'entities'
+        )
         ORDER BY m.id
     """
     if limit:
@@ -232,9 +234,11 @@ def extract_all(limit=None):
             store_mention(conn, entity_id, msg_id, session_id, timestamp)
             total_entities += 1
 
-        if not entities:
-            # Mark as processed with a self-referencing sentinel
-            store_mention(conn, 0, msg_id, session_id, timestamp)
+        # Mark message as processed via processed_messages table
+        conn.execute(
+            "INSERT OR IGNORE INTO processed_messages (message_id, processor) VALUES (?, 'entities')",
+            (msg_id,),
+        )
 
         if (i + 1) % 500 == 0:
             conn.commit()

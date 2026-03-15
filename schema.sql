@@ -74,6 +74,16 @@ CREATE TABLE IF NOT EXISTS entity_mentions (
 
 CREATE INDEX IF NOT EXISTS idx_entity_mentions_entity ON entity_mentions(entity_id);
 
+-- Tracks which processor has handled each message
+CREATE TABLE IF NOT EXISTS processed_messages (
+    message_id INTEGER NOT NULL REFERENCES messages(id),
+    processor TEXT NOT NULL,
+    processed_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (message_id, processor)
+);
+
+CREATE INDEX IF NOT EXISTS idx_processed_messages_processor ON processed_messages(processor);
+
 -- FTS5 full-text search
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
     content,

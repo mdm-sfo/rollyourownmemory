@@ -16,9 +16,9 @@ from pathlib import Path
 from typing import Optional
 
 try:
-    from src.memory_db import get_conn
+    from src.memory_db import get_conn, get_session_messages
 except ImportError:
-    from memory_db import get_conn
+    from memory_db import get_conn, get_session_messages
 
 MEMORY_DIR = Path(__file__).parent.parent
 DB_PATH = MEMORY_DIR / "memory.db"
@@ -208,16 +208,6 @@ def get_undistilled_sessions(conn):
         )
         ORDER BY m.timestamp
     """).fetchall()
-
-
-def get_session_messages(conn, session_id):
-    rows = conn.execute(
-        """SELECT id, session_id, project, role, content, timestamp, machine
-           FROM messages WHERE session_id = ? ORDER BY timestamp, id""",
-        (session_id,),
-    ).fetchall()
-    return [dict(zip(["id", "session_id", "project", "role", "content", "timestamp", "machine"], r))
-            for r in rows]
 
 
 _embedding_model = None

@@ -70,27 +70,8 @@ def search_facts(query: str, project: str | None = None, category: str | None = 
     """Search extracted facts."""
     conn = get_conn(str(DB_PATH))
     try:
-        # search_facts_fts doesn't support project filter, add it manually
-        sql = """
-            SELECT f.* FROM facts_fts
-            JOIN facts f ON f.id = facts_fts.rowid
-            WHERE facts_fts MATCH ?
-            AND f.confidence > 0
-        """
-        params: list = [query]
-
-        if project:
-            sql += " AND f.project LIKE ?"
-            params.append(f"%{project}%")
-        if category:
-            sql += " AND f.category = ?"
-            params.append(category)
-
-        sql += " ORDER BY f.confidence DESC, f.timestamp DESC LIMIT ?"
-        params.append(limit)
-
-        rows = conn.execute(sql, params).fetchall()
-        return [dict(r) for r in rows]
+        return search_facts_fts(conn, query, category=category,
+                                project=project, limit=limit)
     except sqlite3.OperationalError:
         return []
     finally:

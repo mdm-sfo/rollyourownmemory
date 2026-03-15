@@ -41,8 +41,9 @@ def get_unembedded_messages(conn, limit=None):
     sql = """
         SELECT m.id, m.content
         FROM messages m
-        LEFT JOIN embeddings e ON e.message_id = m.id
-        WHERE e.message_id IS NULL
+        WHERE m.id NOT IN (
+            SELECT message_id FROM processed_messages WHERE processor = 'embeddings'
+        )
         ORDER BY m.id
     """
     if limit:
@@ -154,6 +155,11 @@ def embed_messages(model_name=DEFAULT_MODEL, limit=None, batch_size=BATCH_SIZE):
 
         vectors = model.encode(texts, show_progress_bar=False, normalize_embeddings=True)
         store_embeddings(conn, ids, vectors, model_name)
+        # Mark messages as processed via processed_messages table
+        conn.executemany(
+            "INSERT OR IGNORE INTO processed_messages (message_id, processor) VALUES (?, 'embeddings')",
+            [(mid,) for mid in ids],
+        )
         conn.commit()
         update_faiss_index(ids, vectors)
         total += len(batch)

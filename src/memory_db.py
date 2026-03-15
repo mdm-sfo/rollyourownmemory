@@ -39,8 +39,12 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
             ON processed_messages(processor)
     """)
 
-    # Migration 3: Clean up entity_id=0 sentinels from entity_mentions
-    conn.execute("DELETE FROM entity_mentions WHERE entity_id = 0")
+    # Migration 3: Clean up entity_id=0 sentinels from entity_mentions (conditional)
+    sentinel_count = conn.execute(
+        "SELECT COUNT(*) FROM entity_mentions WHERE entity_id = 0"
+    ).fetchone()[0]
+    if sentinel_count > 0:
+        conn.execute("DELETE FROM entity_mentions WHERE entity_id = 0")
 
     conn.commit()
 
@@ -102,6 +106,7 @@ def search_fts(conn: sqlite3.Connection, query: str,
 
 def search_facts_fts(conn: sqlite3.Connection, query: str,
                      category: Optional[str] = None,
+                     project: Optional[str] = None,
                      limit: int = 10) -> list[dict]:
     """Full-text keyword search via FTS5 on facts."""
     sql = """
@@ -115,6 +120,10 @@ def search_facts_fts(conn: sqlite3.Connection, query: str,
     if category:
         sql += " AND f.category = ?"
         params.append(category)
+
+    if project:
+        sql += " AND f.project LIKE ?"
+        params.append(f"%{project}%")
 
     sql += " ORDER BY f.confidence DESC, f.timestamp DESC LIMIT ?"
     params.append(limit)
