@@ -1,0 +1,34 @@
+{
+  "featureId": "misc-non-blocking-fixes",
+  "reviewedAt": "2026-03-15T14:30:00.000Z",
+  "commitId": "48aac37",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "All 3 non-blocking fixes are correctly implemented with minimal, surgical changes. Fix 1 (memory_resume_context) adds a proper session existence check before attempting to load messages, returning a clear error message. Fix 2 (distill.py cross-project --promote) uses .get() safely for dict access and adds KeyError to the except clause. Fix 3 (memory_feedback) passes a timezone-aware UTC timestamp to store_fact() so corrected facts appear in time-filtered queries. The diff is 13 lines across 2 files — appropriately scoped.",
+    "issues": [
+      {
+        "file": "src/distill.py",
+        "line": 730,
+        "severity": "non_blocking",
+        "description": "The KeyError in the except clause is now redundant since both dict accesses use .get() with defaults. No KeyError can be raised from within the try block. Harmless but slightly misleading — a reader might assume a KeyError path exists."
+      },
+      {
+        "file": "src/distill.py",
+        "line": 726,
+        "severity": "non_blocking",
+        "description": "p.get('pattern', '') could insert a fact with text '[cross-project] ' (empty pattern) if the LLM returns a dict without a 'pattern' key. This is a very minor data quality concern — an empty-string guard like `if not p.get('pattern'): continue` would skip malformed entries entirely rather than inserting empty facts."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "memory_add_fact passes last_validated= but not timestamp= to store_fact(), while the new memory_feedback correction path passes timestamp= but not last_validated=. Both patterns work but they're inconsistent in how they mark fact creation time. AGENTS.md doesn't document which timestamp columns should be set in which scenarios.",
+      "evidence": "src/mcp_server.py:219-221 (memory_add_fact uses last_validated=now, no timestamp) vs src/mcp_server.py:614 (memory_feedback uses timestamp=now, no last_validated)"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "All 3 non-blocking fixes are correctly implemented. Fix 1 adds a session existence check returning 'Session {id} not found' for invalid session_ids. Fix 2 uses .get() for safe dict access in cross-project promote. Fix 3 adds a timezone-aware timestamp to corrected facts. Two non-blocking observations: the KeyError except is now redundant with .get(), and empty patterns could theoretically be inserted. One shared-state observation about inconsistent timestamp column usage across MCP tools. Overall: clean, minimal, correct."
+}

@@ -1,0 +1,28 @@
+{
+  "milestone": "misc-post-advanced",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": { "passed": true, "command": ".venv/bin/python -m pytest tests/ -v", "exitCode": 0 },
+    "typecheck": { "passed": true, "command": "echo \"No typecheck configured (no mypy/pyright in project)\"", "exitCode": 0 },
+    "lint": { "passed": true, "command": "echo \"No linter configured\"", "exitCode": 0 }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add convention: when inserting facts via MCP tools (memory_add_fact, memory_feedback correction), set BOTH `timestamp` and `last_validated` to the current UTC time. `timestamp` marks when the fact was created; `last_validated` marks it as freshly validated for confidence decay purposes.",
+      "evidence": "memory_add_fact sets last_validated=now but not timestamp, while memory_feedback correction sets timestamp=now but not last_validated. Both should set both fields for consistency.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}
