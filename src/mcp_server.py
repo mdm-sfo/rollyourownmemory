@@ -208,7 +208,7 @@ def memory_add_fact(fact: str, category: str, project: Optional[str] = None) -> 
 
     Args:
         fact: The fact to remember (concise statement)
-        category: One of: preference, decision, learning, context, tool, pattern
+        category: One of: preference, decision, learning, context, tool, pattern, error, solution
         project: Optional project this fact relates to
     """
     valid = {"preference", "decision", "learning", "context", "tool", "pattern", "error", "solution"}
