@@ -170,11 +170,13 @@ python3 src/distill.py run
 **With local LLM (much higher quality):**
 ```bash
 # Install ollama: https://ollama.com
+ollama pull llama3.3:70b      # 70B, needs ~50GB RAM, excellent quality (default)
+# OR for a smaller model:
 ollama pull llama3.2          # 3B, fast, decent quality
-# OR for much better results if you have the RAM:
-ollama pull llama3.3:70b      # 70B, needs ~50GB RAM, excellent quality
 
 .venv/bin/python src/distill.py run --llm
+# Or with a specific model:
+.venv/bin/python src/distill.py run --llm --model llama3.2
 ```
 
 ### 6. Extract entities
@@ -392,13 +394,13 @@ Note: changing models requires re-embedding all messages.
 
 ### LLM for Distillation
 
-Default: `llama3.2` (3B). For higher quality extraction with more RAM:
+Default: `llama3.3:70b`. To use a different model:
 
 ```bash
-ollama pull llama3.3:70b
+.venv/bin/python src/distill.py run --llm --model llama3.3:70b
 ```
 
-Then edit `src/distill.py` and change the model name in `extract_facts_llm()`.
+Any ollama model works — just pass its name via `--model`.
 
 ### Context Budget
 

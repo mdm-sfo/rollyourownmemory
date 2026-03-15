@@ -116,7 +116,7 @@ def extract_facts_heuristic(session_messages):
     return facts
 
 
-def extract_facts_llm(session_messages, api_base=None):
+def extract_facts_llm(session_messages, api_base=None, model: str = "llama3.3:70b"):
     """Extract facts using a local LLM via OpenAI-compatible API.
 
     Works with ollama, vllm, llama.cpp server, or any OpenAI-compatible endpoint.
@@ -165,7 +165,7 @@ Return ONLY a JSON array, no other text."""
         resp = httpx.post(
             f"{base}/chat/completions",
             json={
-                "model": "llama3.3:70b",
+                "model": model,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.1,
             },
@@ -412,7 +412,7 @@ def dedup_facts(db_path: Optional[str] = None, threshold: float = 0.85) -> int:
     return len(to_delete)
 
 
-def distill(use_llm=False, api_base=None, limit=None):
+def distill(use_llm=False, api_base=None, limit=None, model: str = "llama3.3:70b"):
     conn = get_conn(str(DB_PATH))
     sessions = get_undistilled_sessions(conn)
 
@@ -441,7 +441,7 @@ def distill(use_llm=False, api_base=None, limit=None):
         facts = extract_facts_heuristic(messages)
 
         if use_llm:
-            llm_facts = extract_facts_llm(messages, api_base)
+            llm_facts = extract_facts_llm(messages, api_base, model=model)
             facts.extend(llm_facts)
 
         if facts:
@@ -466,6 +466,7 @@ def main():
 
     run = sub.add_parser("run", help="Distill facts from undistilled sessions")
     run.add_argument("--llm", action="store_true", help="Use local LLM for enhanced extraction")
+    run.add_argument("--model", default="llama3.3:70b", help="LLM model name (default: llama3.3:70b)")
     run.add_argument("--api-base", help="OpenAI-compatible API base URL (default: localhost:11434)")
     run.add_argument("--limit", type=int, help="Max sessions to process")
 
@@ -485,7 +486,7 @@ def main():
     args = parser.parse_args()
 
     if args.command == "run":
-        distill(use_llm=args.llm, api_base=args.api_base, limit=args.limit)
+        distill(use_llm=args.llm, api_base=args.api_base, limit=args.limit, model=args.model)
     elif args.command == "show":
         conn = get_conn(str(DB_PATH))
 
