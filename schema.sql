@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS facts (
     confidence REAL DEFAULT 1.0,
     source_message_id INTEGER REFERENCES messages(id),
     timestamp TEXT,
+    last_validated TEXT,           -- ISO 8601 timestamp for fact decay tracking
     created_at TEXT DEFAULT (datetime('now'))
 );
 

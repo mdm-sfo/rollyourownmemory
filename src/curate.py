@@ -11,6 +11,7 @@ Designed for quick periodic review sessions. Run:
 import argparse
 import sqlite3
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 try:
@@ -65,7 +66,9 @@ def review_facts(min_confidence=0.0, max_confidence=0.89, limit=20, category=Non
         while True:
             choice = input("  [y/n/e/s/q] > ").strip().lower()
             if choice == "y":
-                conn.execute("UPDATE facts SET confidence = 1.0 WHERE id = ?", (r["id"],))
+                now = datetime.now(timezone.utc).isoformat()
+                conn.execute("UPDATE facts SET confidence = 1.0, last_validated = ? WHERE id = ?",
+                             (now, r["id"]))
                 conn.commit()
                 approved += 1
                 print("  -> Approved\n")
@@ -79,8 +82,9 @@ def review_facts(min_confidence=0.0, max_confidence=0.89, limit=20, category=Non
             elif choice == "e":
                 new_text = input("  New fact text: ").strip()
                 if new_text:
-                    conn.execute("UPDATE facts SET fact = ?, confidence = 1.0 WHERE id = ?",
-                                 (new_text, r["id"]))
+                    now = datetime.now(timezone.utc).isoformat()
+                    conn.execute("UPDATE facts SET fact = ?, confidence = 1.0, last_validated = ? WHERE id = ?",
+                                 (now, new_text, r["id"]))
                     conn.commit()
                     edited += 1
                     print("  -> Edited & approved\n")
@@ -173,6 +177,7 @@ def import_facts(filepath):
 
     current_category = None
     imported = 0
+    now = datetime.now(timezone.utc).isoformat()
 
     for line in text.splitlines():
         line = line.strip()
@@ -185,9 +190,9 @@ def import_facts(filepath):
             fact = line[2:].strip()
             if fact and not fact.startswith("#"):
                 conn.execute(
-                    """INSERT OR REPLACE INTO facts (fact, category, confidence, project)
-                       VALUES (?, ?, 1.0, NULL)""",
-                    (fact, current_category),
+                    """INSERT OR REPLACE INTO facts (fact, category, confidence, project, last_validated)
+                       VALUES (?, ?, 1.0, NULL, ?)""",
+                    (fact, current_category, now),
                 )
                 imported += 1
 

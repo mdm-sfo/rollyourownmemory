@@ -3,6 +3,7 @@
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -208,7 +209,9 @@ def memory_add_fact(fact: str, category: str, project: Optional[str] = None) -> 
         return f"Invalid category. Must be one of: {', '.join(sorted(valid))}"
 
     conn = get_conn()
-    store_fact(conn, fact=fact, category=category, confidence=1.0, project=project)
+    now = datetime.now(timezone.utc).isoformat()
+    store_fact(conn, fact=fact, category=category, confidence=1.0, project=project,
+               last_validated=now)
     conn.close()
     return f"Stored fact: [{category}] {fact}"
 

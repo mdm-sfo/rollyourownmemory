@@ -82,23 +82,45 @@ def generate_memory_context(project=None, focus=None, max_tokens=2000, auto_dete
 
     # Section 1: High-value facts (project-filtered if applicable)
     try:
-        sql = "SELECT DISTINCT fact, category, project FROM facts WHERE confidence >= 0.5"
+        sql = """SELECT DISTINCT fact, category, project, confidence,
+                        last_validated, timestamp
+                 FROM facts WHERE confidence >= 0.5"""
         params = []
         if project:
             sql += " AND (project LIKE ? OR project IS NULL)"
             params.append(f"%{project}%")
         else:
-            # Global context: exclude facts tagged to specific projects like /kalshi
-            # Only show general facts, curated facts, and facts from generic project paths
             sql += """ AND (project IS NULL
                         OR project LIKE '/home/%'
                         OR project LIKE '/Users/%')"""
-        sql += " ORDER BY confidence DESC, timestamp DESC LIMIT 15"
+        sql += " ORDER BY confidence DESC, timestamp DESC LIMIT 30"
         rows = conn.execute(sql, params).fetchall()
 
         if rows:
-            lines = ["## Key Facts"]
+            # Apply time-based decay: -0.2 per 90 days unvalidated, min 0.1
+            decayed = []
             for r in rows:
+                effective_conf = r["confidence"]
+                ref_time = r["last_validated"] or r["timestamp"]
+                if ref_time:
+                    try:
+                        ref_dt = datetime.fromisoformat(ref_time.replace("Z", "+00:00"))
+                        if ref_dt.tzinfo is None:
+                            ref_dt = ref_dt.replace(tzinfo=timezone.utc)
+                        days_old = (now - ref_dt).days
+                        if days_old > 90:
+                            periods = days_old // 90
+                            effective_conf = max(0.1, effective_conf - 0.2 * periods)
+                    except (ValueError, TypeError):
+                        pass
+                decayed.append((effective_conf, r))
+
+            # Re-sort by effective confidence and take top 15
+            decayed.sort(key=lambda x: x[0], reverse=True)
+            decayed = [(c, r) for c, r in decayed if c >= 0.1][:15]
+
+            lines = ["## Key Facts"]
+            for _, r in decayed:
                 proj_tag = f" ({r['project']})" if r["project"] and not project else ""
                 lines.append(f"- **[{r['category']}]** {r['fact']}{proj_tag}")
             sections.append("\n".join(lines))
