@@ -1,0 +1,40 @@
+{
+  "featureId": "fact-decay",
+  "reviewedAt": "2026-03-15T07:05:00Z",
+  "commitId": "69d26b2",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fact-decay feature is mostly well-implemented across 4 files (schema.sql, inject.py, curate.py, mcp_server.py). Schema migration in memory_db.py is idempotent and correct. inject.py decay logic correctly applies -0.2 per 90-day period with min 0.1 floor. MCP memory_add_fact correctly sets last_validated. However, there is a blocking parameter-ordering bug in curate.py's edit ('e') case that swaps the fact text with the timestamp, corrupting edited facts.",
+    "issues": [
+      {
+        "file": "src/curate.py",
+        "line": 87,
+        "severity": "blocking",
+        "description": "Parameter ordering bug in the 'e' (edit) case. The SQL is `UPDATE facts SET fact = ?, confidence = 1.0, last_validated = ? WHERE id = ?` but the parameter tuple is `(now, new_text, r['id'])`. This maps `fact = ?` to `now` (the timestamp) and `last_validated = ?` to `new_text` (the user's input text). The correct tuple should be `(new_text, now, r['id'])`. Editing a fact would corrupt it: the fact text becomes a timestamp string and last_validated becomes arbitrary user text."
+      },
+      {
+        "file": "src/curate.py",
+        "line": 125,
+        "severity": "non_blocking",
+        "description": "add_fact_interactive() does not set last_validated on insert. While the feature spec doesn't explicitly require this, it creates an inconsistency: facts added via MCP memory_add_fact get last_validated=now, but facts added via `curate.py add` get last_validated=NULL and timestamp=NULL. Since inject.py skips decay when both are NULL, these facts never decay — which may be unintended for manually added facts. Not technically a spec violation but worth noting."
+      },
+      {
+        "file": "src/inject.py",
+        "line": 105,
+        "severity": "non_blocking",
+        "description": "The decay threshold uses `days_old > 90` (strictly greater than) while the spec says '90+ days' (typically meaning >=90). At exactly 90 days a fact would not be penalized. Practically negligible (one day difference) but technically doesn't match the spec wording."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md states 'The processed_messages table and last_validated column are added via migrations, not in schema.sql base schema — schema.sql is for the original schema. Migrations handle upgrades.' However, the feature description explicitly requires adding last_validated to schema.sql, and the worker correctly followed the feature description. AGENTS.md is now inaccurate on this point — last_validated IS in schema.sql.",
+      "evidence": "AGENTS.md 'Key Architecture Notes' section vs schema.sql line 51 showing `last_validated TEXT` in the CREATE TABLE definition, as required by the feature description."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature implementation covers 7 of 8 expected behaviors correctly. The blocking issue is a parameter-ordering bug in curate.py's edit case (line 87): the SQL parameters `(now, new_text, r['id'])` are in the wrong order — `now` and `new_text` are swapped, meaning editing a fact would corrupt it by writing the timestamp as the fact text and the fact text as the last_validated value. The correct tuple should be `(new_text, now, r['id'])`. This must be fixed before the feature can pass."
+}

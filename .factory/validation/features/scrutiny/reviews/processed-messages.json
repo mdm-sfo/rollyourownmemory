@@ -1,0 +1,51 @@
+{
+  "featureId": "processed-messages",
+  "reviewedAt": "2026-03-15T07:15:00.000Z",
+  "commitId": "a5f172c",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation is solid and covers all feature requirements. The processed_messages table is correctly added to both schema.sql and migrate_schema() with a composite PK (message_id, processor). entities.py and embed.py correctly use processed_messages for tracking unprocessed messages and insert records after processing. Sentinel inserts (entity_id=0) are removed. Migration conditionally cleans up existing sentinels. distill.py correctly imports the shared get_session_messages(). search_facts_fts() accepts an optional project parameter and claude_recall.py delegates to it. A few non-blocking issues were identified.",
+    "issues": [
+      {
+        "file": "src/memory_db.py",
+        "line": 30,
+        "severity": "non_blocking",
+        "description": "Migration DDL for processed_messages lacks REFERENCES messages(id) on message_id column, while schema.sql includes it. Practically no impact since get_conn() doesn't enable PRAGMA foreign_keys, but it's a minor inconsistency between the two schema creation paths (relevant to VAL-CROSS-003)."
+      },
+      {
+        "file": "src/distill.py",
+        "line": 431,
+        "severity": "non_blocking",
+        "description": "get_session_messages(conn, session_id) is called without specifying a limit, inheriting the shared function's default of limit=50. The original local function in distill.py had no limit, returning ALL messages in a session. For sessions with >50 messages, distillation will now only see the first 50 messages, potentially missing facts from later messages. This is a subtle behavioral regression. Consider passing a higher limit (e.g., limit=500) or using a distill-specific call."
+      },
+      {
+        "file": "src/entities.py",
+        "line": 277,
+        "severity": "non_blocking",
+        "description": "The 'stats' subcommand still counts processed messages via 'SELECT COUNT(DISTINCT message_id) FROM entity_mentions' instead of using the new processed_messages table. Since entity_id=0 sentinels are removed, this count now only reflects messages that had entities found (not all processed messages). Should use 'SELECT COUNT(*) FROM processed_messages WHERE processor = \"entities\"' for accuracy."
+      },
+      {
+        "file": "src/entities.py",
+        "line": 263,
+        "severity": "non_blocking",
+        "description": "Leftover 'AND id > 0' / 'AND entity_id > 0' guards in show and stats subcommands are artifacts of the sentinel pattern. They're harmless (SQLite auto-increment starts at 1) but are dead code that could confuse future readers."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md states 'The processed_messages table and last_validated column are added via migrations, not in schema.sql base schema — schema.sql is for the original schema. Migrations handle upgrades.' But this feature explicitly required adding processed_messages to schema.sql, and the worker correctly did so. AGENTS.md is now stale on this point and should be updated to reflect that schema.sql represents the current complete schema.",
+      "evidence": "AGENTS.md Key Architecture Notes section vs the feature description which says 'Add to schema.sql: CREATE TABLE IF NOT EXISTS processed_messages...'"
+    },
+    {
+      "area": "conventions",
+      "observation": "The shared get_session_messages() function has a default limit=50, which is appropriate for CLI/interactive use but may be too restrictive for batch processing (distill.py needs all messages). AGENTS.md doesn't document when to pass explicit limits vs relying on defaults for shared query functions.",
+      "evidence": "src/memory_db.py:135 defines limit=50 default; src/distill.py:431 calls without limit; old local function had no limit"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. All core requirements are met: processed_messages table added to schema.sql and migrate_schema(), entities.py and embed.py correctly use processed_messages for tracking, sentinel inserts removed, conditional sentinel cleanup in migration, distill.py refactored to use shared get_session_messages(), and search_facts_fts() now accepts an optional project parameter used by claude_recall.py. Four non-blocking issues identified: (1) minor DDL inconsistency between schema.sql and migration for REFERENCES clause, (2) distill.py inherits a limit=50 default that the original code didn't have, (3) entities.py stats uses old counting method, (4) leftover id>0 guards. Two shared state observations about stale AGENTS.md conventions."
+}

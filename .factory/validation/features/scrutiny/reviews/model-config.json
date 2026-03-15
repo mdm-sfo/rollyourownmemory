@@ -1,0 +1,28 @@
+{
+  "featureId": "model-config",
+  "reviewedAt": "2026-03-15T07:10:00.000Z",
+  "commitId": "72b385f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean, well-scoped implementation. The --model flag is correctly added to the run subparser with default llama3.3:70b. The model parameter flows properly through main() → distill() → extract_facts_llm() → httpx.post body. No hardcoded model string remains in the API call. README correctly updated to document --model flag and reorder ollama pull instructions to show llama3.3:70b as default.",
+    "issues": [
+      {
+        "file": "src/distill.py",
+        "line": 119,
+        "severity": "non_blocking",
+        "description": "The default value 'llama3.3:70b' is duplicated in three places: extract_facts_llm() default param (line 119), distill() default param (line 415), and argparse default (line 469). This creates a maintenance burden if the default ever changes. A module-level constant (e.g., DEFAULT_MODEL = 'llama3.3:70b') would be cleaner. However, this follows the pattern used elsewhere in the codebase and the duplication is minimal."
+      },
+      {
+        "file": "README.md",
+        "line": 400,
+        "severity": "non_blocking",
+        "description": "The example '.venv/bin/python src/distill.py run --llm --model llama3.3:70b' is slightly redundant since llama3.3:70b is already the default. A more illustrative example might use a different model name. However, it does document how the flag works and is not incorrect."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Feature model-config passes review. The implementation correctly adds a --model CLI flag with default llama3.3:70b, threads the parameter through distill() to extract_facts_llm(), and uses the parameter variable (not a hardcoded string) in the httpx.post API call body. README is updated to document the flag and corrects the default model from llama3.2 to llama3.3:70b. Two non-blocking style observations noted (default value duplication, slightly redundant README example). Worker followed skill procedure and used exact commit message."
+}

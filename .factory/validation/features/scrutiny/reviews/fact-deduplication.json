@@ -1,0 +1,51 @@
+{
+  "featureId": "fact-deduplication",
+  "reviewedAt": "2026-03-15T07:15:00.000Z",
+  "commitId": "eff4307",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation covering all requirements. Adds dedup helper functions (_get_dedup_model, _compute_embedding, _load_existing_fact_embeddings, _is_near_duplicate), modifies store_facts() to check cosine similarity before insertion with stderr logging, and adds dedup_facts() standalone command with union-find clustering. Lazy imports for numpy/sentence-transformers preserve system python3 compatibility. Worker correctly identified and fixed the double-delete FTS issue (facts_ad trigger already handles cleanup). All three validation assertions (VAL-DEDUP-001, VAL-DEDUP-002, VAL-DEDUP-003) are satisfied.",
+    "issues": [
+      {
+        "file": "src/distill.py",
+        "line": 216,
+        "severity": "non_blocking",
+        "description": "Missing return type annotations on new helper functions _get_dedup_model(), _compute_embedding(), and _load_existing_fact_embeddings(). AGENTS.md requires 'Type hints on ALL new functions'. _is_near_duplicate and dedup_facts have proper annotations, but the three private helpers do not."
+      },
+      {
+        "file": "src/distill.py",
+        "line": 288,
+        "severity": "non_blocking",
+        "description": "The stderr log message hardcodes '(similarity >0.85)' but the threshold is a parameter in _is_near_duplicate (default 0.85). If the default changes, the log message would be inaccurate. store_facts() doesn't expose a threshold parameter, which is fine per spec, but the message should either omit the specific number or derive it from the function's default."
+      },
+      {
+        "file": "src/distill.py",
+        "line": 321,
+        "severity": "non_blocking",
+        "description": "dedup_facts() doesn't use try/finally or context manager for the database connection. If an exception occurs between get_conn() and conn.close(), the connection leaks. Minor since SQLite connections are lightweight and the GC will clean up, but a try/finally would be more robust."
+      },
+      {
+        "file": "src/distill.py",
+        "line": 273,
+        "severity": "non_blocking",
+        "description": "store_facts() calls _load_existing_fact_embeddings() which recomputes embeddings for ALL existing facts on every invocation. For 500+ facts this could take 10-30 seconds per distill run. Acceptable per spec ('generate on-the-fly') but worth noting for future optimization."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Three new private helper functions (_get_dedup_model, _compute_embedding, _load_existing_fact_embeddings) lack return type annotations. AGENTS.md says 'Type hints on ALL new functions' but doesn't distinguish between public and private functions. The convention could be clarified to specify whether private helpers are exempt.",
+      "evidence": "src/distill.py:216,228,236 — function signatures missing return type annotations. Compare to _is_near_duplicate at line 256 which has -> Optional[int]."
+    },
+    {
+      "area": "knowledge",
+      "observation": "distill.py now has a cross-module dependency on embed.py (imports get_model and DEFAULT_MODEL for dedup). This new module relationship is not documented in .factory/library/architecture.md which currently says distill.py 'Requires venv for httpx' but doesn't mention the sentence-transformers dependency via embed.py.",
+      "evidence": "src/distill.py:222-225 imports from src.embed. architecture.md line for distill.py only says 'Requires venv for httpx.'"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The fact-deduplication feature is well-implemented and passes review. All three validation assertions are satisfied: near-duplicate checking on insertion (VAL-DEDUP-001), stderr logging of skipped duplicates (VAL-DEDUP-002), and standalone dedup subcommand with clustering and removal report (VAL-DEDUP-003). The implementation uses sound algorithms (normalized cosine similarity via dot product, union-find clustering), correctly handles the FTS trigger for index maintenance, and preserves system python3 compatibility through lazy imports. Four non-blocking issues identified: missing return type annotations on three helper functions, a hardcoded threshold value in a log message, missing try/finally on connection cleanup in dedup_facts, and a performance note about re-computing embeddings on every store_facts call."
+}

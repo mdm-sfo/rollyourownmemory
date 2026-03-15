@@ -1,0 +1,40 @@
+{
+  "featureId": "faiss-index",
+  "reviewedAt": "2026-03-15T07:10:00.000Z",
+  "commitId": "e1d65f4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation of FAISS flat index for semantic search. All 8 expected behaviors from the feature spec are covered: faiss-cpu in pyproject.toml, lazy import via _get_faiss(), incremental index update after each embed batch, rebuild_index CLI subcommand, FAISS-first search with brute-force fallback, SQLite hydration of FAISS results, top_k*3 over-fetch with temporal decay post-reranking, and .gitignore updated for generated files. Code is clean, follows existing patterns (pathlib, argparse subcommands, dual-import), and callers (mcp_server.py, claude_recall.py) are unaffected by the refactored search_similar() signature.",
+    "issues": [
+      {
+        "file": "src/embed.py",
+        "line": 293,
+        "severity": "non_blocking",
+        "description": "Behavioral change in brute-force fallback path: temporal decay was previously applied BEFORE top-k selection (modifying similarities in-place, then sorting). Now it's applied AFTER top-k selection via _apply_temporal_decay() in search_similar(). Unlike the FAISS path which over-fetches top_k*3, the brute-force path only returns top_k candidates, so a message with lower raw similarity but high recency could be missed. The feature spec says 'retrieve top_k*3 from FAISS, apply decay, return top_k' which implies the over-fetch is FAISS-specific, but the brute-force path could also benefit from over-fetching to maintain parity with original behavior."
+      },
+      {
+        "file": "src/embed.py",
+        "line": 210,
+        "severity": "non_blocking",
+        "description": "No error handling around FAISS index I/O in _search_faiss(). If memory.faiss or memory_ids.json is corrupted, faiss.read_index() or json.load() will throw an unhandled exception that propagates through search_similar(), crashing the search instead of gracefully falling back to brute-force. A try/except that returns None on I/O or deserialization errors would make the fallback more robust."
+      },
+      {
+        "file": "src/embed.py",
+        "line": 66,
+        "severity": "non_blocking",
+        "description": "In update_faiss_index(), the existing_ids set is rebuilt from the full id_map on every call. For the current scale (~13k vectors) this is negligible, but at larger scales the id_map JSON file itself becomes a bottleneck (linear read, linear parse, linear set construction). Not an issue at current scale."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The bruteforce search path's temporal decay behavior changed from pre-selection to post-selection, but without the compensating top_k*3 over-fetch that the FAISS path uses. This subtle behavioral difference is not documented anywhere. AGENTS.md or architecture.md could note that temporal decay is post-retrieval reranking in both paths but the FAISS path over-fetches 3x to compensate.",
+      "evidence": "src/embed.py _search_bruteforce() line 293: top_indices = np.argsort(similarities)[::-1][:top_k] — selects top_k by raw similarity only, then search_similar() applies decay after. Original code applied decay to all similarities before top_k selection."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. The FAISS index implementation is complete and correct: lazy import, incremental updates, full rebuild, FAISS-first search with brute-force fallback, top_k*3 over-fetch with post-retrieval temporal decay reranking, and proper .gitignore additions. Three non-blocking issues noted: (1) brute-force fallback doesn't over-fetch like FAISS path so decay reranking is less effective than original inline approach, (2) corrupted index files would crash search instead of falling back gracefully, (3) minor scalability concern with id_map set construction. All callers (mcp_server.py, claude_recall.py) are compatible with the unchanged search_similar() interface."
+}

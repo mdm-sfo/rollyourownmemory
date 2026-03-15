@@ -8,7 +8,7 @@
 
 - `src/ingest.py` — ETL: JSONL → SQLite. Standalone, stdlib only.
 - `src/embed.py` — Sentence-transformer embeddings. Requires venv.
-- `src/distill.py` — Fact extraction via regex + optional LLM. Requires venv for httpx.
+- `src/distill.py` — Fact extraction via regex + optional LLM. Requires venv for httpx. Also imports from embed.py for fact deduplication (sentence-transformers).
 - `src/entities.py` — Entity/tool/library extraction. Standalone.
 - `src/inject.py` — Generates memory-context.md. Requires venv.
 - `src/curate.py` — Interactive fact curation. Standalone.
