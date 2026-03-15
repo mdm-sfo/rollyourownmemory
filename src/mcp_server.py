@@ -546,6 +546,79 @@ def memory_resume_context(project: Optional[str] = None, session_id: Optional[st
 
 
 @mcp.tool()
+def memory_feedback(fact_id: int, feedback: str, correction: Optional[str] = None) -> str:
+    """Provide feedback on a memory fact to calibrate confidence.
+    Call this when the user confirms a fact is accurate ('correct', 'helpful')
+    or indicates it's wrong ('wrong', 'outdated', 'irrelevant').
+
+    Args:
+        fact_id: The fact ID to provide feedback on
+        feedback: One of: 'correct', 'helpful', 'wrong', 'outdated', 'irrelevant'
+        correction: If feedback is 'wrong', the corrected version of the fact (optional)
+    """
+    # Confidence adjustments per feedback type
+    adjustments = {
+        "correct": 0.05,      # Small boost — confirmed accurate
+        "helpful": 0.03,      # Smaller boost — useful but not explicitly confirmed
+        "wrong": -0.5,        # Large penalty — incorrect information is dangerous
+        "outdated": -0.3,     # Medium penalty — was correct, no longer is
+        "irrelevant": -0.15,  # Small penalty — accurate but not useful
+    }
+
+    if feedback not in adjustments:
+        return f"Unknown feedback type '{feedback}'. Use: correct, helpful, wrong, outdated, irrelevant"
+
+    conn = get_conn()
+
+    fact = conn.execute("SELECT * FROM facts WHERE id = ?", (fact_id,)).fetchone()
+    if not fact:
+        conn.close()
+        return f"No fact found with id {fact_id}"
+
+    current_confidence = fact["confidence"]
+    old_fact_text = fact["fact"]
+
+    adjustment = adjustments[feedback]
+    new_confidence = max(0.0, min(1.0, current_confidence + adjustment))
+
+    # Update confidence
+    conn.execute(
+        "UPDATE facts SET confidence = ? WHERE id = ?",
+        (new_confidence, fact_id)
+    )
+
+    result_parts = [f"Updated fact #{fact_id} confidence: {current_confidence:.2f} → {new_confidence:.2f}"]
+
+    # If correction provided with 'wrong' feedback, insert the corrected fact
+    if correction and feedback == "wrong":
+        try:
+            store_fact(
+                conn,
+                fact=correction,
+                category=fact["category"],
+                confidence=0.9,
+                project=fact["project"],
+                session_id=fact["session_id"],
+                source_message_id=fact["source_message_id"],
+                compressed_details=f"corrected from: {old_fact_text[:200]}",
+            )
+            result_parts.append(f"Inserted corrected fact: {correction}")
+        except sqlite3.IntegrityError:
+            result_parts.append("Correction already exists in database")
+
+    conn.commit()
+    conn.close()
+
+    # Add guidance for the agent
+    if new_confidence <= 0.1:
+        result_parts.append("Fact is now below visibility threshold — it won't appear in future context.")
+    elif feedback in ("wrong", "outdated"):
+        result_parts.append("Consider using memory_add_fact to record the correct/current information.")
+
+    return "\n".join(result_parts)
+
+
+@mcp.tool()
 def memory_find_entity(name: str) -> str:
     """Find what sessions and contexts mention a specific tool, library, service, or concept.
 

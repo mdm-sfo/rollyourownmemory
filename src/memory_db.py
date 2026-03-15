@@ -257,17 +257,19 @@ def store_fact(conn: sqlite3.Connection, fact: str, category: str,
                session_id: Optional[str] = None,
                source_message_id: Optional[int] = None,
                timestamp: Optional[str] = None,
-               last_validated: Optional[str] = None) -> int:
+               last_validated: Optional[str] = None,
+               compressed_details: Optional[str] = None) -> int:
     """Insert a fact and return its row id.
 
-    Accepts an optional last_validated parameter for fact decay tracking.
+    Accepts optional last_validated for fact decay tracking and optional
+    compressed_details for noting omitted specifics during extraction.
     """
     sql = """INSERT INTO facts
              (fact, category, confidence, project, session_id,
-              source_message_id, timestamp, last_validated)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"""
+              source_message_id, timestamp, last_validated, compressed_details)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"""
     cur = conn.execute(sql, (fact, category, confidence, project,
                              session_id, source_message_id, timestamp,
-                             last_validated))
+                             last_validated, compressed_details))
     conn.commit()
     return cur.lastrowid

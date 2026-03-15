@@ -207,7 +207,7 @@ Return ONLY a JSON array, no other text."""
                 facts.append({
                     "fact": f["fact"][:500],
                     "category": f["category"],
-                    "compressed_details": f.get("compressed_details", "")[:500],
+                    "compressed_details": (f.get("compressed_details") or "")[:500],
                     "confidence": 0.9,
                     "source_message_id": user_msgs[0]["id"],
                     "session_id": user_msgs[0].get("session_id"),
@@ -369,7 +369,7 @@ def store_facts(conn, facts):
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (f["session_id"], f["project"], f["fact"], f["category"],
                  f["confidence"], f["source_message_id"], f["timestamp"],
-                 f.get("compressed_details", "")),
+                 (f.get("compressed_details") or "")),
             )
             inserted += 1
             # Add the newly inserted fact to existing embeddings for subsequent checks
