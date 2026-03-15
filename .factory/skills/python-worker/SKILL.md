@@ -3,6 +3,8 @@ name: python-worker
 description: Implements Python code changes, refactoring, and tests for the claude-memory codebase
 ---
 
+# IMPORTANT: Read `.factory/library/lossless-claw-prompt.md` for the user's exact code snippets and intent. Adapt them to the current codebase — do NOT paste blindly.
+
 # Python Worker
 
 NOTE: Startup and cleanup are handled by `worker-base`. This skill defines the WORK PROCEDURE.
