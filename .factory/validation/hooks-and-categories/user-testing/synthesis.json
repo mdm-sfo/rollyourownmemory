@@ -1,0 +1,29 @@
+{
+  "milestone": "hooks-and-categories",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 12,
+    "passed": 12,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-HOOK-001",
+    "VAL-HOOK-002",
+    "VAL-HOOK-003",
+    "VAL-HOOK-004",
+    "VAL-HOOK-005",
+    "VAL-HOOK-006",
+    "VAL-DOC-003",
+    "VAL-CROSS-002",
+    "VAL-CAT-001",
+    "VAL-CAT-002",
+    "VAL-CAT-003",
+    "VAL-CROSS-004"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null
+}

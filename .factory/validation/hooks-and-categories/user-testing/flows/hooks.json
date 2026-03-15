@@ -1,0 +1,154 @@
+{
+  "groupId": "hooks",
+  "testedAt": "2026-03-15T12:00:00Z",
+  "isolation": {
+    "workingDirectory": "/home/matthewmurray/claude-memory",
+    "pythonExecutable": ".venv/bin/python",
+    "readOnly": true,
+    "hookScript": "hooks/memory-hook.sh",
+    "readme": "README.md",
+    "injectPy": "src/inject.py"
+  },
+  "toolsUsed": ["Execute", "Read"],
+  "assertions": [
+    {
+      "id": "VAL-HOOK-001",
+      "title": "Hook script exists and is executable",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run ls -la hooks/memory-hook.sh",
+          "expected": "File exists with executable permissions",
+          "observed": "-rwxrwxr-x 1 matthewmurray matthewmurray 2555 Mar 15 06:30 hooks/memory-hook.sh"
+        }
+      ],
+      "evidence": {
+        "files": ["hooks-and-categories/hooks/VAL-HOOK-001-ls-output.txt"],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HOOK-002",
+      "title": "Hook script valid bash",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run bash -n hooks/memory-hook.sh",
+          "expected": "Exit code 0, no syntax errors",
+          "observed": "Exit code 0, no output (valid syntax)"
+        }
+      ],
+      "evidence": {
+        "files": ["hooks-and-categories/hooks/VAL-HOOK-002-bash-syntax.txt"],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HOOK-003",
+      "title": "SessionStart handler outputs additionalContext JSON",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect SessionStart case in hooks/memory-hook.sh",
+          "expected": "Runs inject.py and outputs JSON with hookSpecificOutput.additionalContext",
+          "observed": "SessionStart case runs inject.py --stdout --max-tokens 2000, captures output, wraps in JSON with hookSpecificOutput.hookEventName and hookSpecificOutput.additionalContext using Python json.dumps"
+        }
+      ],
+      "evidence": {
+        "files": ["hooks-and-categories/hooks/VAL-HOOK-003-session-start.txt"],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HOOK-004",
+      "title": "SessionEnd handler runs ingest in background",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect SessionEnd case in hooks/memory-hook.sh",
+          "expected": "Runs ingest.py and embed.py with & (background)",
+          "observed": "SessionEnd case runs ingest.py --quiet with & and embed.py build with &. Comment notes 1.5s default timeout."
+        }
+      ],
+      "evidence": {
+        "files": ["hooks-and-categories/hooks/VAL-HOOK-004-session-end.txt"],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HOOK-005",
+      "title": "PreCompact handler runs ingest+distill",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect PreCompact case in hooks/memory-hook.sh",
+          "expected": "Runs ingest.py synchronously then distill.py in background",
+          "observed": "PreCompact case runs ingest.py --quiet synchronously (no &, with || true), then distill.py run --llm --limit 3 in background (with &)"
+        }
+      ],
+      "evidence": {
+        "files": ["hooks-and-categories/hooks/VAL-HOOK-005-precompact.txt"],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HOOK-006",
+      "title": "Hook reads event from stdin JSON",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect stdin reading code in hooks/memory-hook.sh",
+          "expected": "Reads stdin, extracts hook_event_name and source/reason/trigger fields",
+          "observed": "Script reads stdin via INPUT=$(cat), then uses Python json module to extract hook_event_name, source/reason/trigger (cascading), and session_id. Graceful fallback to empty string on errors."
+        }
+      ],
+      "evidence": {
+        "files": ["hooks-and-categories/hooks/VAL-HOOK-006-stdin-json.txt"],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOC-003",
+      "title": "README hook documentation section",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read README.md and search for hook documentation",
+          "expected": "Contains 'Hook-Based Automation' section with settings.json config and SessionStart/SessionEnd/PreCompact explanation",
+          "observed": "README.md contains '### Hook-Based Automation (Recommended)' section with: full settings.json example (SessionStart/SessionEnd/PreCompact with timeouts), 'What each hook does' explanation for all three hooks, and note about hooks complementing cron"
+        }
+      ],
+      "evidence": {
+        "files": ["hooks-and-categories/hooks/VAL-DOC-003-readme-hooks.txt"],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-002",
+      "title": "Inject uses --stdout for hook",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Cross-inspect hooks/memory-hook.sh and src/inject.py",
+          "expected": "Hook calls inject.py --stdout; output wrapped in hookSpecificOutput.additionalContext JSON",
+          "observed": "Hook calls inject.py --stdout --max-tokens 2000. inject.py has --stdout flag (action='store_true') that prints output to stdout. Hook captures output and wraps it via Python json.dumps in hookSpecificOutput.additionalContext."
+        }
+      ],
+      "evidence": {
+        "files": ["hooks-and-categories/hooks/VAL-CROSS-002-inject-stdout.txt"],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 8 assertions: 8 passed, 0 failed. All hook-related assertions verified through direct CLI execution (VAL-HOOK-001, VAL-HOOK-002) and code inspection (VAL-HOOK-003 through VAL-HOOK-006, VAL-DOC-003, VAL-CROSS-002). The hook script is well-structured with correct executable permissions, valid bash syntax, proper stdin JSON parsing, appropriate background/foreground execution patterns for each hook event, and complete README documentation."
+}

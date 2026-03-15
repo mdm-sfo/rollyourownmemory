@@ -1,0 +1,110 @@
+{
+  "groupId": "categories",
+  "testedAt": "2026-03-15T00:00:00Z",
+  "isolation": {
+    "workingDirectory": "/home/matthewmurray/claude-memory",
+    "pythonExecutable": ".venv/bin/python",
+    "readOnly": true,
+    "dbMode": "in-memory only",
+    "distillPath": "src/distill.py",
+    "mcpServerPath": "src/mcp_server.py"
+  },
+  "toolsUsed": ["Execute"],
+  "assertions": [
+    {
+      "id": "VAL-CAT-001",
+      "title": "FACT_CATEGORIES includes error and solution",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Import FACT_CATEGORIES from src.distill and inspect keys",
+          "expected": "Dict contains 'error' and 'solution' keys with descriptions",
+          "observed": "FACT_CATEGORIES contains 'error': 'Error conditions encountered and their symptoms' and 'solution': 'Fixes and workarounds for specific errors'"
+        }
+      ],
+      "evidence": {
+        "textOutput": ["hooks-and-categories/categories/VAL-CAT-001-fact-categories.txt"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CAT-002",
+      "title": "LLM prompt includes error/solution guidance",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect extract_facts_llm() prompt string in src/distill.py",
+          "expected": "Prompt Rules section includes error and solution category definitions",
+          "observed": "Prompt includes: '\"error\" = specific error conditions worth remembering (include error text, affected component, and trigger conditions)' and '\"solution\" = the fix or workaround for a specific error (reference what error it solves)'"
+        },
+        {
+          "action": "Check for error/solution pair extraction guidance",
+          "expected": "Prompt instructs to extract BOTH error and solution as separate facts",
+          "observed": "Prompt includes: 'When you find an error/solution pair, extract BOTH as separate facts' with detailed guidance for each"
+        }
+      ],
+      "evidence": {
+        "textOutput": ["hooks-and-categories/categories/VAL-CAT-002-prompt-rules.txt"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CAT-003",
+      "title": "Error/solution example in prompt",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect extract_facts_llm() prompt string for Example section",
+          "expected": "Prompt includes an example showing error fact and matching solution fact",
+          "observed": "Prompt contains Example section with CORS preflight error fact (category: 'error') and corresponding fix fact (category: 'solution'), each with compressed_details"
+        }
+      ],
+      "evidence": {
+        "textOutput": ["hooks-and-categories/categories/VAL-CAT-003-prompt-example.txt"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-004",
+      "title": "New categories work end-to-end",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Verify FACT_CATEGORIES in distill.py has error and solution",
+          "expected": "Dict contains both keys",
+          "observed": "FACT_CATEGORIES has 'error' and 'solution' with descriptions"
+        },
+        {
+          "action": "Verify LLM prompt in distill.py references error/solution",
+          "expected": "Prompt includes category rules for error and solution",
+          "observed": "Prompt Rules section defines both categories; extraction guidance and examples present"
+        },
+        {
+          "action": "Verify memory_add_fact valid set in mcp_server.py includes error/solution",
+          "expected": "valid = {...} set includes 'error' and 'solution'",
+          "observed": "valid = {\"preference\", \"decision\", \"learning\", \"context\", \"tool\", \"pattern\", \"error\", \"solution\"}"
+        },
+        {
+          "action": "Verify memory_search_facts can display facts with error/solution categories",
+          "expected": "Output format uses r['category'] which works for any category string",
+          "observed": "memory_search_facts formats output as [#{id}] [{category}] which displays any category. Docstring also lists error and solution in the category parameter help text."
+        }
+      ],
+      "evidence": {
+        "textOutput": ["hooks-and-categories/categories/VAL-CROSS-004-end-to-end.txt"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 4 assertions: 4 passed, 0 failed. All error/solution category support verified across FACT_CATEGORIES dict, LLM prompt rules and examples, mcp_server.py validation set, and search display."
+}
