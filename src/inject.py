@@ -124,8 +124,8 @@ def generate_memory_context(project=None, focus=None, max_tokens=2000, auto_dete
                 proj_tag = f" ({r['project']})" if r["project"] and not project else ""
                 lines.append(f"- **[{r['category']}]** {r['fact']}{proj_tag}")
             sections.append("\n".join(lines))
-    except sqlite3.OperationalError:
-        pass
+    except sqlite3.OperationalError as e:
+        print(f"Warning: {e}", file=sys.stderr)
 
     # Section 2: Recent sessions (project-filtered, then general)
     try:
@@ -174,8 +174,8 @@ def generate_memory_context(project=None, focus=None, max_tokens=2000, auto_dete
                         topic += "..."
                 lines.append(f"- [{started}] {proj} ({r['msg_count']} msgs): {topic}")
             sections.append("\n".join(lines))
-    except sqlite3.OperationalError:
-        pass
+    except sqlite3.OperationalError as e:
+        print(f"Warning: {e}", file=sys.stderr)
 
     # Section 3: Relevant entities (project-aware grouping)
     try:
@@ -208,8 +208,8 @@ def generate_memory_context(project=None, focus=None, max_tokens=2000, auto_dete
                     names = ", ".join(f"{r['name']}({r['mention_count']})" for r in items[:6])
                     lines.append(f"- **{label}**: {names}")
             sections.append("\n".join(lines))
-    except sqlite3.OperationalError:
-        pass
+    except sqlite3.OperationalError as e:
+        print(f"Warning: {e}", file=sys.stderr)
 
     # Section 4: Focus-specific recall
     if focus:
@@ -231,8 +231,8 @@ def generate_memory_context(project=None, focus=None, max_tokens=2000, auto_dete
                         content += "..."
                     lines.append(f"- [{ts}] ({r['role']}) {content}")
                 sections.append("\n".join(lines))
-        except sqlite3.OperationalError:
-            pass
+        except sqlite3.OperationalError as e:
+            print(f"Warning: {e}", file=sys.stderr)
 
     conn.close()
 
