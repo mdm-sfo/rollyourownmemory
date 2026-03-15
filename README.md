@@ -423,6 +423,13 @@ Any ollama model works — just pass its name via `--model`.
 
 **The single highest-value maintenance task** is occasionally hand-curating 10-20 facts in `curated-facts.md` and running `python3 src/curate.py import curated-facts.md`. These confidence-1.0 facts always surface first in context injection.
 
+## Limitations
+
+- **Semantic search loads embeddings into memory.** FAISS mitigates this, but `embed.py build` needs ~300 MB RAM. Use `--batch-size 64` on machines with less than 4 GB.
+- **Fact extraction quality depends on the LLM.** The heuristic extractor catches obvious patterns; use `--llm` with a 7B+ parameter model for best results.
+- **No multi-user support.** The system assumes a single user. All sessions, facts, and entities share one database with no access control.
+- **Schema migrations are additive only.** There is no automated rollback. Back up `memory.db` before upgrading.
+
 ## Privacy
 
 - **Everything is local.** No data is sent to any external service.
