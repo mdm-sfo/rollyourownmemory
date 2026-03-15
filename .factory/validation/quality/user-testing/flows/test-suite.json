@@ -1,0 +1,51 @@
+{
+  "groupId": "test-suite",
+  "testedAt": "2026-03-15T00:00:00Z",
+  "isolation": {
+    "workingDirectory": "/home/matthewmurray/claude-memory",
+    "pythonExecutable": ".venv/bin/python",
+    "readOnly": true,
+    "testDirectory": "tests/"
+  },
+  "toolsUsed": ["Execute"],
+  "assertions": {
+    "VAL-TEST-001": {
+      "status": "pass",
+      "evidence": "pytest output: 3 passed (test_double_hyphen_escaping, test_simple_path, test_no_projects_dir). Test covers: (1) path with -- yielding /home/user/my-project, (2) simple path yielding /home/user/simple, (3) no projects dir yielding None.",
+      "details": "All 3 test cases in TestDeriveProject match the assertion specification exactly. Code verified in tests/test_ingest.py. Evidence file: quality/test-suite/VAL-TEST-001-output.txt"
+    },
+    "VAL-TEST-002": {
+      "status": "pass",
+      "evidence": "pytest output: 1 passed (test_parse_temp_jsonl). Test creates temp JSONL with 2 entries, parses via parse_history_file(), verifies 2 records returned with correct content, role, session_id, project fields, and offset > 0.",
+      "details": "Test implementation in TestParseHistoryFile matches assertion spec. Evidence file: quality/test-suite/VAL-TEST-002-output.txt"
+    },
+    "VAL-TEST-003": {
+      "status": "pass",
+      "evidence": "pytest output: 5 passed (test_string_content, test_list_of_blocks, test_none_input, test_empty_string_content, test_empty_blocks). Tests cover string content and list-of-blocks content formats as specified, plus additional edge cases.",
+      "details": "TestExtractTextContent covers both required formats (string and list-of-blocks) plus None, empty string, and empty blocks edge cases. Evidence file: quality/test-suite/VAL-TEST-003-output.txt"
+    },
+    "VAL-TEST-004": {
+      "status": "pass",
+      "evidence": "pytest output: 1 passed (test_wal_and_busy_timeout). Test creates temp DB via get_conn(), verifies PRAGMA journal_mode returns 'wal' and PRAGMA busy_timeout returns 5000.",
+      "details": "TestGetConnSetsPragmas::test_wal_and_busy_timeout matches assertion spec exactly. Evidence file: quality/test-suite/VAL-TEST-004-output.txt"
+    },
+    "VAL-TEST-005": {
+      "status": "pass",
+      "evidence": "pytest output: 1 passed (test_insert_and_search). Test inserts 3 messages (2 about pytest, 1 unrelated), runs search_fts(db, 'pytest'), verifies results contain pytest-related content.",
+      "details": "TestSearchFts::test_insert_and_search performs full FTS round-trip as specified. Evidence file: quality/test-suite/VAL-TEST-005-output.txt"
+    },
+    "VAL-TEST-006": {
+      "status": "pass",
+      "evidence": "pytest output: 1 passed (test_round_trip). Test stores fact via store_fact() with all fields (fact, category, confidence, project, session_id, source_message_id, timestamp, last_validated), retrieves via search_facts_fts('pytest'), verifies all fields match.",
+      "details": "TestStoreAndSearchFacts::test_round_trip performs full store/search round-trip as specified. Evidence file: quality/test-suite/VAL-TEST-006-output.txt"
+    },
+    "VAL-TEST-007": {
+      "status": "pass",
+      "evidence": "Full test suite: 12 passed in 0.04s, exit code 0. All tests in tests/test_ingest.py (9 tests) and tests/test_memory_db.py (3 tests) pass.",
+      "details": "Ran .venv/bin/python -m pytest tests/ -v — all 12 tests passed with exit code 0. Evidence file: quality/test-suite/VAL-TEST-007-full-suite.txt"
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 7 assertions: all 7 passed. All test files match their assertion specifications. Full test suite runs 12 tests with exit code 0."
+}

@@ -1,0 +1,20 @@
+{
+  "groupId": "readme-check",
+  "testedAt": "2026-03-15T00:00:00Z",
+  "isolation": {
+    "workingDirectory": "/home/matthewmurray/claude-memory",
+    "readOnly": true,
+    "targetFile": "README.md"
+  },
+  "toolsUsed": ["Read", "Execute"],
+  "assertions": {
+    "VAL-README-001": {
+      "status": "pass",
+      "evidence": "README.md contains ## Limitations at line 426, before ## Privacy at line 433. Four bullet points confirmed: (a) RAM requirements (~300 MB), (b) LLM quality dependency, (c) no multi-user support, (d) additive-only migrations.",
+      "details": "All four required topics are covered with bold lead-ins and explanatory text. Section ordering verified via grep -n on all ## headings."
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 1 assertion: 1 passed. VAL-README-001 confirmed — Limitations section exists before Privacy with all required bullet points."
+}
