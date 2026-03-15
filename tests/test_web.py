@@ -7,6 +7,8 @@ Tests cover:
 - Facts CRUD (list, update, delete)
 - Session list and detail endpoints
 - Ask mode SSE streaming endpoint
+- CLAUDE.md editor endpoints (GET, PUT)
+- Context preview endpoint
 """
 
 import json
@@ -1218,3 +1220,359 @@ class TestFactsFrontend:
         js = resp.text
         # Should use escapeHtml extensively in facts rendering
         assert "escapeHtml" in js
+
+
+# --- CLAUDE.md Editor API Tests ---
+
+class TestClaudeMdGetEndpoint:
+    """Tests for GET /api/claude-md — read CLAUDE.md file."""
+
+    def test_get_claude_md_returns_content(self, client, tmp_path):
+        """GET /api/claude-md returns file content when file exists."""
+        test_file = tmp_path / "CLAUDE.md"
+        test_file.write_text("# Test Content\nHello world")
+        with patch("src.web.CLAUDE_MD_PATH", test_file):
+            resp = client.get("/api/claude-md")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["content"] == "# Test Content\nHello world"
+        assert "path" in data
+        assert data.get("exists") is not False  # exists should be True or not present
+
+    def test_get_claude_md_missing_file(self, client, tmp_path):
+        """GET /api/claude-md returns empty content when file doesn't exist."""
+        missing_file = tmp_path / "nonexistent" / "CLAUDE.md"
+        with patch("src.web.CLAUDE_MD_PATH", missing_file):
+            resp = client.get("/api/claude-md")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["content"] == ""
+        assert data["exists"] is False
+        assert "path" in data
+
+    def test_get_claude_md_returns_json(self, client, tmp_path):
+        """GET /api/claude-md returns JSON content type."""
+        test_file = tmp_path / "CLAUDE.md"
+        test_file.write_text("test")
+        with patch("src.web.CLAUDE_MD_PATH", test_file):
+            resp = client.get("/api/claude-md")
+        assert "application/json" in resp.headers["content-type"]
+
+    def test_get_claude_md_has_path_field(self, client, tmp_path):
+        """Response includes the path field."""
+        test_file = tmp_path / "CLAUDE.md"
+        test_file.write_text("test")
+        with patch("src.web.CLAUDE_MD_PATH", test_file):
+            resp = client.get("/api/claude-md")
+        data = resp.json()
+        assert "path" in data
+        assert len(data["path"]) > 0
+
+    def test_get_claude_md_empty_file(self, client, tmp_path):
+        """GET /api/claude-md handles empty file."""
+        test_file = tmp_path / "CLAUDE.md"
+        test_file.write_text("")
+        with patch("src.web.CLAUDE_MD_PATH", test_file):
+            resp = client.get("/api/claude-md")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["content"] == ""
+
+
+class TestClaudeMdPutEndpoint:
+    """Tests for PUT /api/claude-md — save CLAUDE.md file."""
+
+    def test_put_claude_md_saves_content(self, client, tmp_path):
+        """PUT /api/claude-md saves content to file."""
+        test_file = tmp_path / "CLAUDE.md"
+        test_file.write_text("original")
+        with patch("src.web.CLAUDE_MD_PATH", test_file):
+            resp = client.put("/api/claude-md", json={"content": "# Updated\nNew content"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["saved"] is True
+        assert data["bytes"] > 0
+        # Verify file was actually written
+        assert test_file.read_text() == "# Updated\nNew content"
+
+    def test_put_claude_md_creates_file(self, client, tmp_path):
+        """PUT /api/claude-md creates file if it doesn't exist."""
+        test_dir = tmp_path / "subdir"
+        test_dir.mkdir(parents=True, exist_ok=True)
+        test_file = test_dir / "CLAUDE.md"
+        with patch("src.web.CLAUDE_MD_PATH", test_file):
+            resp = client.put("/api/claude-md", json={"content": "New file content"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["saved"] is True
+        assert test_file.exists()
+        assert test_file.read_text() == "New file content"
+
+    def test_put_claude_md_returns_byte_count(self, client, tmp_path):
+        """PUT /api/claude-md returns correct byte count."""
+        test_file = tmp_path / "CLAUDE.md"
+        content = "Hello, world!"
+        with patch("src.web.CLAUDE_MD_PATH", test_file):
+            resp = client.put("/api/claude-md", json={"content": content})
+        data = resp.json()
+        assert data["bytes"] == len(content.encode("utf-8"))
+
+    def test_put_claude_md_empty_content(self, client, tmp_path):
+        """PUT /api/claude-md with empty content saves empty file."""
+        test_file = tmp_path / "CLAUDE.md"
+        test_file.write_text("something")
+        with patch("src.web.CLAUDE_MD_PATH", test_file):
+            resp = client.put("/api/claude-md", json={"content": ""})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["saved"] is True
+        assert data["bytes"] == 0
+        assert test_file.read_text() == ""
+
+    def test_put_claude_md_roundtrip(self, client, tmp_path):
+        """Content survives a PUT then GET round-trip."""
+        test_file = tmp_path / "CLAUDE.md"
+        content = "# Round Trip\n\nTest content with **bold** and `code`"
+        with patch("src.web.CLAUDE_MD_PATH", test_file):
+            client.put("/api/claude-md", json={"content": content})
+            resp = client.get("/api/claude-md")
+        data = resp.json()
+        assert data["content"] == content
+
+    def test_put_claude_md_creates_parent_dirs(self, client, tmp_path):
+        """PUT /api/claude-md creates parent directories if needed."""
+        test_file = tmp_path / "deep" / "nested" / "CLAUDE.md"
+        with patch("src.web.CLAUDE_MD_PATH", test_file):
+            resp = client.put("/api/claude-md", json={"content": "nested content"})
+        assert resp.status_code == 200
+        assert test_file.exists()
+
+
+# --- Context Preview API Tests ---
+
+class TestContextPreviewEndpoint:
+    """Tests for GET /api/context-preview — run inject.py and return output."""
+
+    def test_context_preview_returns_content(self, client):
+        """GET /api/context-preview returns content and tokens_estimate."""
+        mock_output = "# Memory Context\n\n## Key Facts\n- Some fact"
+        with patch("src.web.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout=mock_output,
+                stderr="",
+            )
+            resp = client.get("/api/context-preview")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["content"] == mock_output
+        assert "tokens_estimate" in data
+        assert isinstance(data["tokens_estimate"], int)
+
+    def test_context_preview_default_max_tokens(self, client):
+        """Default max_tokens is 2000."""
+        with patch("src.web.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="test", stderr="")
+            client.get("/api/context-preview")
+            # Check that --max-tokens 2000 was passed
+            call_args = mock_run.call_args
+            cmd = call_args[0][0] if call_args[0] else call_args[1].get("args", [])
+            assert "--max-tokens" in cmd
+            idx = cmd.index("--max-tokens")
+            assert cmd[idx + 1] == "2000"
+
+    def test_context_preview_custom_max_tokens(self, client):
+        """Custom max_tokens parameter is passed to inject.py."""
+        with patch("src.web.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="test", stderr="")
+            client.get("/api/context-preview?max_tokens=500")
+            call_args = mock_run.call_args
+            cmd = call_args[0][0] if call_args[0] else call_args[1].get("args", [])
+            assert "--max-tokens" in cmd
+            idx = cmd.index("--max-tokens")
+            assert cmd[idx + 1] == "500"
+
+    def test_context_preview_with_project(self, client):
+        """Project parameter is passed to inject.py."""
+        with patch("src.web.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="test", stderr="")
+            client.get("/api/context-preview?project=kalshi")
+            call_args = mock_run.call_args
+            cmd = call_args[0][0] if call_args[0] else call_args[1].get("args", [])
+            assert "--project" in cmd
+            idx = cmd.index("--project")
+            assert cmd[idx + 1] == "kalshi"
+
+    def test_context_preview_no_project_omits_flag(self, client):
+        """When no project is provided, --project flag is not passed."""
+        with patch("src.web.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="test", stderr="")
+            client.get("/api/context-preview")
+            call_args = mock_run.call_args
+            cmd = call_args[0][0] if call_args[0] else call_args[1].get("args", [])
+            assert "--project" not in cmd
+
+    def test_context_preview_subprocess_error(self, client):
+        """Subprocess failure returns error gracefully."""
+        with patch("src.web.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=1,
+                stdout="",
+                stderr="some error",
+            )
+            resp = client.get("/api/context-preview")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "error" in data or "content" in data
+
+    def test_context_preview_subprocess_exception(self, client):
+        """Exception during subprocess call returns error gracefully."""
+        with patch("src.web.subprocess.run", side_effect=Exception("subprocess failed")):
+            resp = client.get("/api/context-preview")
+        # Should not crash - return error or 500
+        assert resp.status_code in (200, 500)
+        data = resp.json()
+        assert "error" in data
+
+    def test_context_preview_tokens_estimate_reasonable(self, client):
+        """Token estimate is approximately len(content)//4."""
+        mock_output = "A" * 400  # ~100 tokens
+        with patch("src.web.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=mock_output, stderr="")
+            resp = client.get("/api/context-preview")
+        data = resp.json()
+        assert data["tokens_estimate"] == 100  # 400 chars // 4
+
+    def test_context_preview_returns_json(self, client):
+        """Context preview returns JSON content type."""
+        with patch("src.web.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="test", stderr="")
+            resp = client.get("/api/context-preview")
+        assert "application/json" in resp.headers["content-type"]
+
+    def test_context_preview_uses_no_detect(self, client):
+        """Context preview passes --no-detect to avoid PWD auto-detection."""
+        with patch("src.web.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="test", stderr="")
+            client.get("/api/context-preview")
+            call_args = mock_run.call_args
+            cmd = call_args[0][0] if call_args[0] else call_args[1].get("args", [])
+            assert "--no-detect" in cmd
+
+
+# --- CLAUDE.md Editor Frontend Tests ---
+
+class TestClaudeMdFrontend:
+    """Tests for CLAUDE.md editor frontend elements."""
+
+    def test_html_has_claude_md_section(self, client):
+        """HTML has a CLAUDE.md editor section."""
+        resp = client.get("/")
+        html = resp.text
+        assert 'id="section-claude-md"' in html
+
+    def test_html_has_editor_textarea(self, client):
+        """HTML has an editor textarea for CLAUDE.md."""
+        resp = client.get("/")
+        html = resp.text
+        assert 'id="claude-md-editor"' in html or 'claude-md-editor' in html
+
+    def test_html_has_preview_area(self, client):
+        """HTML has a preview area for rendered markdown."""
+        resp = client.get("/")
+        html = resp.text
+        assert 'id="claude-md-preview"' in html or 'claude-md-preview' in html
+
+    def test_html_has_save_button(self, client):
+        """HTML has a save button for CLAUDE.md."""
+        resp = client.get("/")
+        html = resp.text
+        assert 'id="claude-md-save"' in html or 'claude-md-save' in html
+
+    def test_js_has_claude_md_functions(self, client):
+        """app.js has functions for loading and saving CLAUDE.md."""
+        resp = client.get("/static/app.js")
+        js = resp.text
+        assert "/api/claude-md" in js
+
+    def test_js_has_markdown_rendering(self, client):
+        """app.js has simple markdown rendering function."""
+        resp = client.get("/static/app.js")
+        js = resp.text
+        assert "renderMarkdown" in js or "markdownToHtml" in js or "renderMd" in js
+
+    def test_js_has_debounced_preview(self, client):
+        """app.js debounces preview updates."""
+        resp = client.get("/static/app.js")
+        js = resp.text
+        assert "debounce" in js.lower() or "setTimeout" in js
+
+
+# --- Context Preview Frontend Tests ---
+
+class TestContextPreviewFrontend:
+    """Tests for Memory Context Preview frontend elements."""
+
+    def test_html_has_context_preview_section(self, client):
+        """HTML has context preview section."""
+        resp = client.get("/")
+        html = resp.text
+        assert 'id="section-context-preview"' in html
+
+    def test_html_has_token_slider(self, client):
+        """HTML has a token budget slider."""
+        resp = client.get("/")
+        html = resp.text
+        assert 'id="token-budget-slider"' in html or 'token-budget' in html
+
+    def test_html_has_regenerate_button(self, client):
+        """HTML has a regenerate button."""
+        resp = client.get("/")
+        html = resp.text
+        assert "Regenerate" in html or "regenerate" in html
+
+    def test_html_has_preview_area(self, client):
+        """HTML has context preview display area."""
+        resp = client.get("/")
+        html = resp.text
+        assert 'id="context-preview-output"' in html or 'context-preview-output' in html
+
+    def test_js_has_context_preview_functions(self, client):
+        """app.js has functions for loading context preview."""
+        resp = client.get("/static/app.js")
+        js = resp.text
+        assert "/api/context-preview" in js
+
+    def test_js_has_project_dropdown(self, client):
+        """app.js handles project dropdown for context preview."""
+        resp = client.get("/static/app.js")
+        js = resp.text
+        assert "context-project" in js or "contextProject" in js
+
+    def test_html_has_project_filter(self, client):
+        """HTML has a project filter for context preview."""
+        resp = client.get("/")
+        html = resp.text
+        assert 'id="context-project-filter"' in html or 'context-project' in html
+
+
+# --- Projects List API Test ---
+
+class TestProjectsEndpoint:
+    """Tests for GET /api/projects — list distinct projects."""
+
+    def test_projects_returns_list(self, seeded_client):
+        """GET /api/projects returns a list of distinct project names."""
+        resp = seeded_client.get("/api/projects")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "projects" in data
+        assert isinstance(data["projects"], list)
+        assert len(data["projects"]) > 0
+
+    def test_projects_distinct(self, seeded_client):
+        """Projects list has no duplicates."""
+        resp = seeded_client.get("/api/projects")
+        data = resp.json()
+        projects = data["projects"]
+        assert len(projects) == len(set(projects))

@@ -5,6 +5,7 @@ Entry point: uvicorn src.web:app --host 0.0.0.0 --port 8585
 
 import json
 import sqlite3
+import subprocess
 import time
 from pathlib import Path
 from typing import Optional
@@ -23,6 +24,9 @@ OLLAMA_MODEL = "llama3.3:70b"
 # Paths
 PROJECT_ROOT = Path(__file__).parent.parent
 STATIC_DIR = PROJECT_ROOT / "static"
+CLAUDE_MD_PATH = Path.home() / ".claude" / "CLAUDE.md"
+VENV_PYTHON = PROJECT_ROOT / ".venv" / "bin" / "python"
+INJECT_SCRIPT = PROJECT_ROOT / "src" / "inject.py"
 
 app = FastAPI(title="Claude Memory", docs_url=None, redoc_url=None)
 
@@ -681,6 +685,125 @@ async def get_session(
         "project": rows[0].get("project"),
         "messages": messages,
     }
+
+
+# --- CLAUDE.md Editor Endpoints ---
+
+@app.get("/api/claude-md")
+async def get_claude_md():
+    """Read ~/.claude/CLAUDE.md and return its content."""
+    path = CLAUDE_MD_PATH
+    try:
+        if path.exists():
+            content = path.read_text(encoding="utf-8")
+            return {"content": content, "path": str(path), "exists": True}
+        else:
+            return {"content": "", "path": str(path), "exists": False}
+    except Exception as exc:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to read CLAUDE.md: {type(exc).__name__}"},
+        )
+
+
+@app.put("/api/claude-md")
+async def put_claude_md(request: Request):
+    """Save content to ~/.claude/CLAUDE.md."""
+    body = await request.json()
+    content = body.get("content", "")
+    path = CLAUDE_MD_PATH
+
+    try:
+        # Create parent directories if they don't exist
+        path.parent.mkdir(parents=True, exist_ok=True)
+        encoded = content.encode("utf-8")
+        path.write_bytes(encoded)
+        return {"saved": True, "bytes": len(encoded)}
+    except Exception as exc:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to save CLAUDE.md: {type(exc).__name__}"},
+        )
+
+
+# --- Context Preview Endpoint ---
+
+@app.get("/api/context-preview")
+async def context_preview(
+    max_tokens: int = Query(2000, ge=100, le=10000, description="Token budget"),
+    project: Optional[str] = Query(None, description="Filter by project"),
+):
+    """Run inject.py --stdout and return the generated context preview."""
+    try:
+        cmd = [
+            str(VENV_PYTHON),
+            str(INJECT_SCRIPT),
+            "--stdout",
+            "--no-detect",
+            "--max-tokens",
+            str(max_tokens),
+        ]
+
+        if project:
+            cmd.extend(["--project", project])
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        if result.returncode != 0:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "content": "",
+                    "tokens_estimate": 0,
+                    "error": f"inject.py failed: {result.stderr.strip() or 'unknown error'}",
+                },
+            )
+
+        content = result.stdout
+        tokens_estimate = len(content) // 4
+
+        return {"content": content, "tokens_estimate": tokens_estimate}
+
+    except subprocess.TimeoutExpired:
+        return JSONResponse(
+            status_code=200,
+            content={
+                "content": "",
+                "tokens_estimate": 0,
+                "error": "inject.py timed out",
+            },
+        )
+    except Exception as exc:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Context preview failed: {type(exc).__name__}"},
+        )
+
+
+# --- Projects List Endpoint ---
+
+@app.get("/api/projects")
+async def list_projects():
+    """Return distinct project names from facts and messages."""
+    conn = memory_db.get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT project FROM facts WHERE project IS NOT NULL "
+            "UNION "
+            "SELECT DISTINCT project FROM messages WHERE project IS NOT NULL "
+            "ORDER BY project"
+        ).fetchall()
+        projects = [r[0] for r in rows if r[0]]
+        return {"projects": projects}
+    except Exception:
+        return {"projects": []}
+    finally:
+        conn.close()
 
 
 # Mount static files AFTER API routes so /api/* routes take priority

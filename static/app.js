@@ -1648,4 +1648,378 @@
             });
         }
     });
+
+    // --- CLAUDE.md Editor ---
+
+    var claudeMdEditor = document.getElementById("claude-md-editor");
+    var claudeMdPreview = document.getElementById("claude-md-preview");
+    var claudeMdSave = document.getElementById("claude-md-save");
+    var claudeMdPath = document.getElementById("claude-md-path");
+    var claudeMdStatus = document.getElementById("claude-md-status");
+    var claudeMdLoaded = false;
+    var claudeMdDebounceTimer = null;
+
+    /**
+     * Simple markdown to HTML renderer using regex replacements.
+     * Handles: headings, bold, italic, inline code, code blocks,
+     * unordered lists, ordered lists, tables, horizontal rules, paragraphs.
+     */
+    function renderMarkdown(md) {
+        if (!md) return '<p class="empty-state" style="padding:1rem">No content</p>';
+
+        var html = md;
+
+        // Fenced code blocks first (```...```)
+        html = html.replace(/```([a-zA-Z]*)\n([\s\S]*?)```/g, function (_, lang, code) {
+            return '<pre><code>' + escapeHtml(code.replace(/\n$/, '')) + '</code></pre>';
+        });
+
+        // Split into lines for block-level processing
+        var lines = html.split('\n');
+        var result = [];
+        var inList = false;
+        var listType = '';
+        var inTable = false;
+        var tableRows = [];
+
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+
+            // Skip lines inside code blocks (already processed)
+            if (line.indexOf('<pre><code>') !== -1) {
+                // Find the closing tag
+                var blockEnd = line.indexOf('</code></pre>');
+                if (blockEnd !== -1) {
+                    result.push(line);
+                    continue;
+                }
+                result.push(line);
+                while (i + 1 < lines.length && lines[i + 1].indexOf('</code></pre>') === -1) {
+                    i++;
+                    result.push(lines[i]);
+                }
+                if (i + 1 < lines.length) {
+                    i++;
+                    result.push(lines[i]);
+                }
+                continue;
+            }
+
+            // Table rows
+            if (line.match(/^\|(.+)\|$/)) {
+                if (!inTable) {
+                    inTable = true;
+                    tableRows = [];
+                }
+                // Skip separator rows (|---|---|)
+                if (line.match(/^\|[\s\-:|]+\|$/)) {
+                    continue;
+                }
+                tableRows.push(line);
+                continue;
+            } else if (inTable) {
+                // End table
+                result.push(renderTable(tableRows));
+                tableRows = [];
+                inTable = false;
+            }
+
+            // Horizontal rule
+            if (line.match(/^(\*{3,}|-{3,}|_{3,})$/)) {
+                if (inList) {
+                    result.push(listType === 'ul' ? '</ul>' : '</ol>');
+                    inList = false;
+                }
+                result.push('<hr>');
+                continue;
+            }
+
+            // Headings
+            var headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+            if (headingMatch) {
+                if (inList) {
+                    result.push(listType === 'ul' ? '</ul>' : '</ol>');
+                    inList = false;
+                }
+                var level = headingMatch[1].length;
+                result.push('<h' + level + '>' + renderInline(headingMatch[2]) + '</h' + level + '>');
+                continue;
+            }
+
+            // Unordered list items
+            var ulMatch = line.match(/^(\s*)[-*+]\s+(.+)$/);
+            if (ulMatch) {
+                if (!inList || listType !== 'ul') {
+                    if (inList) result.push(listType === 'ul' ? '</ul>' : '</ol>');
+                    result.push('<ul>');
+                    inList = true;
+                    listType = 'ul';
+                }
+                result.push('<li>' + renderInline(ulMatch[2]) + '</li>');
+                continue;
+            }
+
+            // Ordered list items
+            var olMatch = line.match(/^(\s*)\d+\.\s+(.+)$/);
+            if (olMatch) {
+                if (!inList || listType !== 'ol') {
+                    if (inList) result.push(listType === 'ul' ? '</ul>' : '</ol>');
+                    result.push('<ol>');
+                    inList = true;
+                    listType = 'ol';
+                }
+                result.push('<li>' + renderInline(olMatch[2]) + '</li>');
+                continue;
+            }
+
+            // Close open list on non-list line
+            if (inList) {
+                result.push(listType === 'ul' ? '</ul>' : '</ol>');
+                inList = false;
+            }
+
+            // Empty line
+            if (line.trim() === '') {
+                continue;
+            }
+
+            // Paragraph
+            result.push('<p>' + renderInline(line) + '</p>');
+        }
+
+        // Close any open list or table
+        if (inList) {
+            result.push(listType === 'ul' ? '</ul>' : '</ol>');
+        }
+        if (inTable && tableRows.length > 0) {
+            result.push(renderTable(tableRows));
+        }
+
+        return result.join('\n');
+    }
+
+    /**
+     * Render inline markdown: bold, italic, inline code, links.
+     */
+    function renderInline(text) {
+        // Inline code (must come before bold/italic to avoid conflicts)
+        text = text.replace(/`([^`]+)`/g, '<code>' + '$1' + '</code>');
+        // Bold + italic
+        text = text.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+        // Bold
+        text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        text = text.replace(/__(.+?)__/g, '<strong>$1</strong>');
+        // Italic
+        text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+        text = text.replace(/_(.+?)_/g, '<em>$1</em>');
+        return text;
+    }
+
+    /**
+     * Render a simple markdown table from pipe-delimited rows.
+     */
+    function renderTable(rows) {
+        if (rows.length === 0) return '';
+        var html = '<table>';
+        for (var i = 0; i < rows.length; i++) {
+            var cells = rows[i].split('|').filter(function (c, idx, arr) {
+                return idx > 0 && idx < arr.length - 1;
+            });
+            var tag = (i === 0) ? 'th' : 'td';
+            html += '<tr>';
+            for (var j = 0; j < cells.length; j++) {
+                html += '<' + tag + '>' + renderInline(cells[j].trim()) + '</' + tag + '>';
+            }
+            html += '</tr>';
+        }
+        html += '</table>';
+        return html;
+    }
+
+    function loadClaudeMd() {
+        if (!claudeMdEditor) return;
+
+        fetch("/api/claude-md")
+            .then(function (resp) { return resp.json(); })
+            .then(function (data) {
+                claudeMdEditor.value = data.content || "";
+                if (claudeMdPath) {
+                    claudeMdPath.textContent = data.path || "~/.claude/CLAUDE.md";
+                    if (data.exists === false) {
+                        claudeMdPath.textContent += " (new file)";
+                    }
+                }
+                updateClaudeMdPreview();
+                claudeMdLoaded = true;
+            })
+            .catch(function (err) {
+                if (claudeMdStatus) {
+                    claudeMdStatus.textContent = "Failed to load: " + err.message;
+                    claudeMdStatus.className = "save-status error";
+                }
+            });
+    }
+
+    function updateClaudeMdPreview() {
+        if (!claudeMdPreview || !claudeMdEditor) return;
+        claudeMdPreview.innerHTML = renderMarkdown(claudeMdEditor.value);
+    }
+
+    function saveClaudeMd() {
+        if (!claudeMdEditor) return;
+
+        var content = claudeMdEditor.value;
+        if (claudeMdStatus) {
+            claudeMdStatus.textContent = "Saving...";
+            claudeMdStatus.className = "save-status";
+        }
+
+        fetch("/api/claude-md", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content: content }),
+        })
+            .then(function (resp) {
+                if (!resp.ok) throw new Error("Save failed");
+                return resp.json();
+            })
+            .then(function (data) {
+                if (claudeMdStatus) {
+                    claudeMdStatus.textContent = "Saved (" + data.bytes + " bytes)";
+                    claudeMdStatus.className = "save-status success";
+                    setTimeout(function () {
+                        claudeMdStatus.textContent = "";
+                    }, 3000);
+                }
+            })
+            .catch(function (err) {
+                if (claudeMdStatus) {
+                    claudeMdStatus.textContent = "Error: " + err.message;
+                    claudeMdStatus.className = "save-status error";
+                }
+            });
+    }
+
+    // Wire up editor events
+    if (claudeMdEditor) {
+        claudeMdEditor.addEventListener("input", function () {
+            if (claudeMdDebounceTimer) clearTimeout(claudeMdDebounceTimer);
+            claudeMdDebounceTimer = setTimeout(updateClaudeMdPreview, 150);
+        });
+    }
+
+    if (claudeMdSave) {
+        claudeMdSave.addEventListener("click", saveClaudeMd);
+    }
+
+    // --- Memory Context Preview ---
+
+    var tokenSlider = document.getElementById("token-budget-slider");
+    var tokenValue = document.getElementById("token-budget-value");
+    var contextProjectFilter = document.getElementById("context-project-filter");
+    var contextRegenerate = document.getElementById("context-regenerate");
+    var contextOutput = document.getElementById("context-preview-output");
+    var contextStatus = document.getElementById("context-status");
+    var contextDebounceTimer = null;
+    var contextPreviewLoaded = false;
+
+    function loadContextPreview() {
+        if (!contextOutput) return;
+
+        var maxTokens = tokenSlider ? tokenSlider.value : "2000";
+        var project = contextProjectFilter ? contextProjectFilter.value : "";
+
+        contextOutput.textContent = "Loading context preview...";
+        if (contextStatus) {
+            contextStatus.textContent = "";
+        }
+
+        var url = "/api/context-preview?max_tokens=" + encodeURIComponent(maxTokens);
+        if (project) {
+            url += "&project=" + encodeURIComponent(project);
+        }
+
+        fetch(url)
+            .then(function (resp) { return resp.json(); })
+            .then(function (data) {
+                if (data.error) {
+                    contextOutput.textContent = "Error: " + data.error;
+                    if (contextStatus) {
+                        contextStatus.textContent = "Error generating preview";
+                    }
+                } else {
+                    contextOutput.textContent = data.content || "(empty output)";
+                    if (contextStatus) {
+                        contextStatus.textContent = "~" + data.tokens_estimate + " tokens estimated";
+                    }
+                }
+            })
+            .catch(function (err) {
+                contextOutput.textContent = "Failed to load: " + err.message;
+                if (contextStatus) {
+                    contextStatus.textContent = "Error";
+                }
+            });
+    }
+
+    function populateContextProjectFilter() {
+        if (!contextProjectFilter) return;
+
+        fetch("/api/projects")
+            .then(function (resp) { return resp.json(); })
+            .then(function (data) {
+                var projects = data.projects || [];
+                projects.forEach(function (p) {
+                    var opt = document.createElement("option");
+                    opt.value = p;
+                    opt.textContent = p;
+                    contextProjectFilter.appendChild(opt);
+                });
+            })
+            .catch(function () {
+                // Ignore — filter just won't have options
+            });
+    }
+
+    // Wire up context preview controls
+    if (tokenSlider) {
+        tokenSlider.addEventListener("input", function () {
+            if (tokenValue) tokenValue.textContent = this.value;
+        });
+        tokenSlider.addEventListener("change", function () {
+            if (contextDebounceTimer) clearTimeout(contextDebounceTimer);
+            contextDebounceTimer = setTimeout(loadContextPreview, 300);
+        });
+    }
+
+    if (contextProjectFilter) {
+        contextProjectFilter.addEventListener("change", function () {
+            loadContextPreview();
+        });
+    }
+
+    if (contextRegenerate) {
+        contextRegenerate.addEventListener("click", loadContextPreview);
+    }
+
+    populateContextProjectFilter();
+
+    // Load content on section navigation
+    navLinks.forEach(function (link) {
+        if (link.dataset.section === "claude-md") {
+            link.addEventListener("click", function () {
+                if (!claudeMdLoaded) {
+                    loadClaudeMd();
+                }
+            });
+        }
+        if (link.dataset.section === "context-preview") {
+            link.addEventListener("click", function () {
+                if (!contextPreviewLoaded) {
+                    loadContextPreview();
+                    contextPreviewLoaded = true;
+                }
+            });
+        }
+    });
 })();

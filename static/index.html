@@ -90,17 +90,43 @@
         <!-- CLAUDE.md Section -->
         <section id="section-claude-md" class="section">
             <h2>CLAUDE.md Editor</h2>
-            <div id="claude-md-content" class="section-content">
-                <p>CLAUDE.md editor coming soon.</p>
+            <div class="claude-md-toolbar">
+                <div class="claude-md-path" id="claude-md-path"></div>
+                <button id="claude-md-save" class="btn-primary btn-sm">Save</button>
+                <span id="claude-md-status" class="save-status"></span>
+            </div>
+            <div class="claude-md-layout">
+                <div class="claude-md-editor-pane">
+                    <textarea id="claude-md-editor" class="claude-md-textarea" placeholder="Enter your CLAUDE.md content here...&#10;&#10;Supports markdown: # headers, **bold**, `code`, - lists, ```code blocks```"></textarea>
+                </div>
+                <div class="claude-md-preview-pane">
+                    <div class="preview-label">Preview</div>
+                    <div id="claude-md-preview" class="claude-md-preview"></div>
+                </div>
             </div>
         </section>
 
         <!-- Context Preview Section -->
         <section id="section-context-preview" class="section">
-            <h2>Context Preview</h2>
-            <div id="context-preview-content" class="section-content">
-                <p>Memory context preview coming soon.</p>
+            <h2>Memory Context Preview</h2>
+            <div class="context-toolbar">
+                <div class="context-controls">
+                    <div class="token-budget-control">
+                        <label class="filter-label" for="token-budget-slider">Token Budget:</label>
+                        <input type="range" id="token-budget-slider" min="500" max="4000" step="100" value="2000">
+                        <span id="token-budget-value" class="token-budget-value">2000</span>
+                    </div>
+                    <div class="context-project-control">
+                        <label class="filter-label" for="context-project-filter">Project:</label>
+                        <select id="context-project-filter" class="filter-select">
+                            <option value="">All Projects</option>
+                        </select>
+                    </div>
+                    <button id="context-regenerate" class="btn-primary btn-sm">Regenerate</button>
+                </div>
+                <div id="context-status" class="context-status"></div>
             </div>
+            <div id="context-preview-output" class="context-preview-output"></div>
         </section>
     </main>
 
