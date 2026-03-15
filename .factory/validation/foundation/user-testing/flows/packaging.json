@@ -1,0 +1,46 @@
+{
+  "groupId": "packaging",
+  "testedAt": "2026-03-14T23:00:00Z",
+  "isolation": {
+    "workingDirectory": "/home/matthewmurray/claude-memory",
+    "python": ".venv/bin/python",
+    "entryPoint": ".venv/bin/claude-recall",
+    "readOnly": true
+  },
+  "toolsUsed": ["Execute"],
+  "assertions": {
+    "VAL-PKG-001": {
+      "status": "pass",
+      "evidence": "pip install -e . completed with exit code 0, package claude-memory 0.1.0 installed with core dependencies (numpy, httpx)",
+      "details": "Successfully built and installed editable package. All core dependencies resolved."
+    },
+    "VAL-PKG-002": {
+      "status": "pass",
+      "evidence": "pip install -e '.[all,dev]' completed with exit code 0, all optional groups resolved: embeddings (sentence-transformers), mcp (mcp), all (embeddings+mcp), dev (pytest)",
+      "details": "All four optional dependency groups defined in pyproject.toml and successfully resolved by pip."
+    },
+    "VAL-PKG-003": {
+      "status": "pass",
+      "evidence": "claude-recall --help from /tmp shows CLI help with subcommands: search, session, sessions, facts, context",
+      "details": "Entry point works from any directory. All required subcommands present: search (s), session (ss), sessions (ls), facts (f), context (ctx)."
+    },
+    "VAL-PKG-004": {
+      "status": "pass",
+      "evidence": "src/__init__.py exists at /home/matthewmurray/claude-memory/src/__init__.py",
+      "details": "File existence confirmed via test -f. src is a proper Python package."
+    },
+    "VAL-PKG-005": {
+      "status": "pass",
+      "evidence": "pyproject.toml defines claude-recall = 'src.claude_recall:cli'; src/claude_recall.py imports get_conn, search_fts, search_facts_fts, get_session_messages, list_recent_sessions from src.memory_db",
+      "details": "Entry point references src.claude_recall:cli module. That module imports all query functions from src.memory_db rather than duplicating them."
+    },
+    "VAL-CROSS-004": {
+      "status": "pass",
+      "evidence": "pyproject.toml [project.optional-dependencies] includes dev = ['pytest']",
+      "details": "pytest is listed in the dev optional dependency group."
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 6 assertions: all 6 passed. Package installs correctly in editable mode, all dependency groups resolve, CLI entry point works from any directory, src/__init__.py exists, entry point uses src module with memory_db imports, and pytest is in dev dependencies."
+}

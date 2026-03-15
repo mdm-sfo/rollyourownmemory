@@ -1,0 +1,25 @@
+{
+  "groupId": "cross-cutting",
+  "testedAt": "2026-03-14T23:45:00Z",
+  "isolation": {
+    "workingDirectory": "/home/matthewmurray/claude-memory",
+    "python": ".venv/bin/python",
+    "readOnly": true
+  },
+  "toolsUsed": ["Execute"],
+  "assertions": {
+    "VAL-CROSS-001": {
+      "status": "pass",
+      "evidence": "All 8 source modules imported individually without circular import errors. Terminal output saved to evidence/foundation/cross-cutting/VAL-CROSS-001-imports.txt",
+      "details": "Imported src.memory_db, src.inject, src.distill, src.mcp_server, src.embed, src.entities, src.curate, src.ingest — all printed 'OK' and exited with code 0."
+    },
+    "VAL-CROSS-002": {
+      "status": "pass",
+      "evidence": "Both bin/claude-recall --help and .venv/bin/claude-recall --help produced identical help output. Terminal output saved to evidence/foundation/cross-cutting/VAL-CROSS-002-cli-help.txt",
+      "details": "Both commands displayed the argparse help with subcommands (search, session, sessions, facts, context) and exited with code 0."
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 2 assertions: 2 passed, 0 failed. All source modules import cleanly with no circular dependencies, and both CLI entry points produce valid help output."
+}
