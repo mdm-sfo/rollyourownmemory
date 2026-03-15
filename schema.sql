@@ -1,6 +1,12 @@
 -- Claude Memory System — SQLite Schema
 -- FTS5 keyword search + vector embeddings over Claude Code conversation logs
 
+-- Migration: If upgrading an existing database, run:
+--   ALTER TABLE facts ADD COLUMN compressed_details TEXT;
+--   DROP TABLE IF EXISTS facts_fts;
+--   -- Then re-run the CREATE VIRTUAL TABLE and trigger statements below
+--   -- Then rebuild FTS: INSERT INTO facts_fts(facts_fts) VALUES('rebuild');
+
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY,
     source_file TEXT NOT NULL,
@@ -44,6 +50,7 @@ CREATE TABLE IF NOT EXISTS facts (
     source_message_id INTEGER REFERENCES messages(id),
     timestamp TEXT,
     last_validated TEXT,           -- ISO 8601 timestamp for fact decay tracking
+    compressed_details TEXT,       -- comma-separated list of specifics omitted during extraction
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -96,6 +103,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
 CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(
     fact,
     category,
+    compressed_details,
     content='facts',
     content_rowid='id',
     tokenize='porter unicode61'
@@ -120,18 +128,18 @@ CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
 END;
 
 CREATE TRIGGER IF NOT EXISTS facts_ai AFTER INSERT ON facts BEGIN
-    INSERT INTO facts_fts(rowid, fact, category)
-    VALUES (new.id, new.fact, new.category);
+    INSERT INTO facts_fts(rowid, fact, category, compressed_details)
+    VALUES (new.id, new.fact, new.category, new.compressed_details);
 END;
 
 CREATE TRIGGER IF NOT EXISTS facts_au AFTER UPDATE ON facts BEGIN
-    INSERT INTO facts_fts(facts_fts, rowid, fact, category)
-    VALUES ('delete', old.id, old.fact, old.category);
-    INSERT INTO facts_fts(rowid, fact, category)
-    VALUES (new.id, new.fact, new.category);
+    INSERT INTO facts_fts(facts_fts, rowid, fact, category, compressed_details)
+    VALUES ('delete', old.id, old.fact, old.category, old.compressed_details);
+    INSERT INTO facts_fts(rowid, fact, category, compressed_details)
+    VALUES (new.id, new.fact, new.category, new.compressed_details);
 END;
 
 CREATE TRIGGER IF NOT EXISTS facts_ad AFTER DELETE ON facts BEGIN
-    INSERT INTO facts_fts(facts_fts, rowid, fact, category)
-    VALUES ('delete', old.id, old.fact, old.category);
+    INSERT INTO facts_fts(facts_fts, rowid, fact, category, compressed_details)
+    VALUES ('delete', old.id, old.fact, old.category, old.compressed_details);
 END;

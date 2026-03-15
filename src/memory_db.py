@@ -25,7 +25,71 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
     if "last_validated" not in columns:
         conn.execute("ALTER TABLE facts ADD COLUMN last_validated TEXT")
 
-    # Migration 2: Create processed_messages table
+    # Migration 2: Add compressed_details column to facts table
+    if "compressed_details" not in columns:
+        conn.execute("ALTER TABLE facts ADD COLUMN compressed_details TEXT")
+
+    # Migration 3: Drop and recreate facts_fts with compressed_details column
+    # FTS5 virtual tables cannot be ALTERed — must drop and recreate
+    # Check if facts_fts already includes compressed_details
+    needs_fts_rebuild = False
+    try:
+        # If facts_fts doesn't have compressed_details, this will fail
+        conn.execute("INSERT INTO facts_fts(facts_fts) VALUES('integrity-check')")
+        # Check column count by attempting a match that uses compressed_details
+        test_row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='facts_fts'"
+        ).fetchone()
+        if test_row and "compressed_details" not in (test_row[0] or ""):
+            needs_fts_rebuild = True
+    except sqlite3.OperationalError:
+        needs_fts_rebuild = True
+
+    if needs_fts_rebuild:
+        # Drop old triggers first (they reference the old FTS schema)
+        conn.execute("DROP TRIGGER IF EXISTS facts_ai")
+        conn.execute("DROP TRIGGER IF EXISTS facts_au")
+        conn.execute("DROP TRIGGER IF EXISTS facts_ad")
+
+        # Drop and recreate facts_fts with compressed_details
+        conn.execute("DROP TABLE IF EXISTS facts_fts")
+        conn.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(
+                fact,
+                category,
+                compressed_details,
+                content='facts',
+                content_rowid='id',
+                tokenize='porter unicode61'
+            )
+        """)
+
+        # Recreate triggers with compressed_details
+        conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS facts_ai AFTER INSERT ON facts BEGIN
+                INSERT INTO facts_fts(rowid, fact, category, compressed_details)
+                VALUES (new.id, new.fact, new.category, new.compressed_details);
+            END
+        """)
+        conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS facts_au AFTER UPDATE ON facts BEGIN
+                INSERT INTO facts_fts(facts_fts, rowid, fact, category, compressed_details)
+                VALUES ('delete', old.id, old.fact, old.category, old.compressed_details);
+                INSERT INTO facts_fts(rowid, fact, category, compressed_details)
+                VALUES (new.id, new.fact, new.category, new.compressed_details);
+            END
+        """)
+        conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS facts_ad AFTER DELETE ON facts BEGIN
+                INSERT INTO facts_fts(facts_fts, rowid, fact, category, compressed_details)
+                VALUES ('delete', old.id, old.fact, old.category, old.compressed_details);
+            END
+        """)
+
+        # Rebuild FTS index from existing data
+        conn.execute("INSERT INTO facts_fts(facts_fts) VALUES('rebuild')")
+
+    # Migration 4: Create processed_messages table
     conn.execute("""
         CREATE TABLE IF NOT EXISTS processed_messages (
             message_id INTEGER NOT NULL,
@@ -39,7 +103,7 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
             ON processed_messages(processor)
     """)
 
-    # Migration 3: Clean up entity_id=0 sentinels from entity_mentions (conditional)
+    # Migration 5: Clean up entity_id=0 sentinels from entity_mentions (conditional)
     sentinel_count = conn.execute(
         "SELECT COUNT(*) FROM entity_mentions WHERE entity_id = 0"
     ).fetchone()[0]
