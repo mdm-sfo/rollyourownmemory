@@ -420,6 +420,51 @@ If you work across multiple machines:
 
 The `ingest.py` script supports custom source directories. See `discover_sources()` for the paths it checks.
 
+## Team & Shared Memory
+
+rollyourownmemory supports shared team memory through its existing multi-machine architecture. Here's how to set it up.
+
+### Architecture Options
+
+**Option 1: Shared Database (Simplest)**
+Mount a shared filesystem (NFS, SSHFS, or a synced folder) and point all team members' `DB_PATH` to the same `memory.db`. SQLite WAL mode handles concurrent reads well, though concurrent writes should be serialized (only one person running `distill.py` at a time).
+
+```bash
+# In each team member's environment, set the DB path:
+export MEMORY_DB_PATH=/shared/team/memory.db
+```
+
+Note: This requires adding `MEMORY_DB_PATH` environment variable support to each script (replace the hardcoded `DB_PATH` with `os.environ.get('MEMORY_DB_PATH', str(MEMORY_DIR / 'memory.db'))`).
+
+**Option 2: Sync via Wormhole (Current Architecture)**
+The project already supports ingesting logs from remote machines via `~/wormhole/claude-logs/`. Each team member syncs their Claude Code logs to a shared location, and one central instance runs `ingest.py` → `distill.py` → `embed.py` to build the combined database.
+
+**Option 3: Per-User Partitioning**
+For teams that want shared memory but per-user attribution, add a `user` column to the messages and facts tables:
+
+```sql
+ALTER TABLE messages ADD COLUMN user TEXT DEFAULT 'default';
+ALTER TABLE facts ADD COLUMN user TEXT DEFAULT 'default';
+```
+
+Then filter by user in `inject.py` to show only relevant facts, or show all facts with user attribution.
+
+### Privacy Considerations
+
+- **All conversations are stored in plaintext** in SQLite. Anyone with DB access sees everything.
+- The `machine` column in messages identifies which machine contributed each message.
+- Facts extracted by `distill.py` may contain sensitive information from conversations.
+- Consider running `curate.py` regularly to review and remove sensitive facts.
+- For regulated environments, consider encrypting `memory.db` at rest.
+
+### Team Setup Checklist
+
+1. Choose an architecture option above
+2. Set up log sync (rsync, wormhole, or shared mount)
+3. Configure one machine to run the cron pipeline (ingest → embed → distill)
+4. Each team member configures their Claude Code hooks (see Hook-Based Automation)
+5. Use `memory_search_facts` to verify cross-machine facts are appearing
+
 ## Schema
 
 ```sql
