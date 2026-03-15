@@ -1,0 +1,21 @@
+{
+  "featureId": "fix-hook-script",
+  "reviewedAt": "2026-03-15T14:05:00.000Z",
+  "commitId": "b144a3437688098707c234ffbcf707389e73d174",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix cleanly addresses all three issues identified in the prior hook-script review. (1) A PYTHON variable is defined as $MEMORY_ROOT/.venv/bin/python and used consistently for ALL python invocations — the JSON-parsing one-liners, inject.py, ingest.py, embed.py, and distill.py. Zero occurrences of bare 'python3' remain in the script. (2) The embed.py call is correctly changed from '--quiet' (non-existent flag) to 'build' (the required subcommand, confirmed in embed.py argparse at line 365). (3) The memory_add_fact docstring in mcp_server.py now lists all 8 categories including 'error' and 'solution', matching the validation set on line 212. bash -n syntax check passes, all 26 tests pass, and the diff is minimal and surgical (19 lines changed across 2 files).",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The fix establishes a pattern of using PYTHON=\"$MEMORY_ROOT/.venv/bin/python\" in shell scripts. AGENTS.md documents that tests use '.venv/bin/python -m pytest' but doesn't mention the convention for hook/shell scripts. Now that the pattern exists, it could be documented to prevent future scripts from using bare python3.",
+      "evidence": "hooks/memory-hook.sh line 16: PYTHON=\"$MEMORY_ROOT/.venv/bin/python\". AGENTS.md Testing section mentions .venv/bin/python for pytest but no general shell script guidance."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/hooks-and-categories/scrutiny/reviews/hook-script.json",
+  "summary": "The fix-hook-script feature fully addresses both blocking issues from the prior hook-script review. The embed.py invocation is corrected from '--quiet' to 'build', all python3 calls are replaced with the venv interpreter via a PYTHON variable, and the mcp_server.py docstring is updated to list all 8 fact categories. The implementation is clean, minimal, and verified — no issues found."
+}
