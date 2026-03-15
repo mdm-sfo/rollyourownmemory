@@ -179,6 +179,28 @@ body {
     background: var(--primary-hover);
 }
 
+/* Search options */
+.search-options {
+    margin-top: 0.5rem;
+}
+
+.checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+}
+
+.checkbox-label input[type="checkbox"] {
+    accent-color: var(--primary);
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+}
+
 /* Results */
 .results-container {
     min-height: 100px;

@@ -119,7 +119,9 @@
                 '<div class="empty-state">Searching...</div>';
         }
 
-        fetch("/api/search?q=" + encodeURIComponent(query) + "&limit=20")
+        var semanticCheckbox = document.getElementById("include-semantic");
+        var searchType = (semanticCheckbox && semanticCheckbox.checked) ? "all" : "fts";
+        fetch("/api/search?q=" + encodeURIComponent(query) + "&limit=20&type=" + searchType)
             .then(function (resp) {
                 return resp.json();
             })

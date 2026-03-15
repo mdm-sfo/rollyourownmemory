@@ -134,8 +134,14 @@ async def search(
     q: str = Query("", description="Search query"),
     limit: int = Query(20, ge=1, le=100),
     project: Optional[str] = Query(None, description="Filter by project"),
+    type: Optional[str] = Query(None, description="Search type: fts (default), all, or semantic"),
 ):
-    """Combined search: FTS messages + facts + sessions + optional semantic."""
+    """Combined search: FTS messages + facts + sessions + optional semantic.
+
+    The `type` query parameter controls whether semantic (FAISS) search is included:
+    - type=fts (or omitted): FTS-only search — fast (<500ms).
+    - type=all or type=semantic: includes FAISS semantic search results too.
+    """
     start = time.time()
 
     if not q.strip():
@@ -149,6 +155,7 @@ async def search(
         }
 
     query = q.strip()
+    include_semantic = type in ("all", "semantic")
     conn = memory_db.get_conn()
 
     # FTS message search
@@ -201,8 +208,10 @@ async def search(
     except sqlite3.OperationalError:
         pass
 
-    # Semantic search (optional, wrapped in try/except)
-    semantic = _semantic_search(query, conn, project=project, limit=min(limit, 5))
+    # Semantic search — only when explicitly requested via type=all or type=semantic
+    semantic = []
+    if include_semantic:
+        semantic = _semantic_search(query, conn, project=project, limit=min(limit, 5))
 
     conn.close()
     elapsed = round((time.time() - start) * 1000, 1)

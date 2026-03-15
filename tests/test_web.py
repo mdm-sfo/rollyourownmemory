@@ -309,12 +309,57 @@ class TestSearchEndpoint:
     def test_search_semantic_fallback(self, seeded_client):
         """When FAISS/sentence-transformers unavailable, semantic returns empty list."""
         with patch("src.web._semantic_search", return_value=[]):
-            resp = seeded_client.get("/api/search?q=deployment")
+            resp = seeded_client.get("/api/search?q=deployment&type=all")
             assert resp.status_code == 200
             data = resp.json()
             assert data["semantic"] == []
             # FTS results should still work
             assert "messages" in data
+
+    def test_search_default_type_is_fts_only(self, seeded_client):
+        """Default search (no type param) does NOT call semantic search."""
+        with patch("src.web._semantic_search") as mock_semantic:
+            mock_semantic.return_value = []
+            resp = seeded_client.get("/api/search?q=kalshi")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["semantic"] == []
+            mock_semantic.assert_not_called()
+
+    def test_search_type_fts_skips_semantic(self, seeded_client):
+        """type=fts explicitly skips semantic search."""
+        with patch("src.web._semantic_search") as mock_semantic:
+            mock_semantic.return_value = []
+            resp = seeded_client.get("/api/search?q=kalshi&type=fts")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["semantic"] == []
+            mock_semantic.assert_not_called()
+
+    def test_search_type_all_includes_semantic(self, seeded_client):
+        """type=all includes semantic search results."""
+        mock_results = [{"id": 99, "session_id": "s1", "project": "test",
+                         "role": "user", "content": "mock", "timestamp": "2024-01-01",
+                         "score": 0.95}]
+        with patch("src.web._semantic_search", return_value=mock_results) as mock_semantic:
+            resp = seeded_client.get("/api/search?q=kalshi&type=all")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert len(data["semantic"]) == 1
+            assert data["semantic"][0]["score"] == 0.95
+            mock_semantic.assert_called_once()
+
+    def test_search_type_semantic_includes_semantic(self, seeded_client):
+        """type=semantic also triggers semantic search."""
+        mock_results = [{"id": 99, "session_id": "s1", "project": "test",
+                         "role": "user", "content": "mock", "timestamp": "2024-01-01",
+                         "score": 0.85}]
+        with patch("src.web._semantic_search", return_value=mock_results) as mock_semantic:
+            resp = seeded_client.get("/api/search?q=kalshi&type=semantic")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert len(data["semantic"]) == 1
+            mock_semantic.assert_called_once()
 
     def test_search_returns_json_content_type(self, seeded_client):
         """Search endpoint returns JSON content type."""
@@ -757,3 +802,21 @@ class TestAskFrontend:
         js = resp.text
         # Should contain fact-id linking or showFactInspect for citations
         assert "showFactInspect" in js or "fact-id" in js or "data-fact-id" in js
+
+
+class TestSearchTypeParam:
+    """Tests for the search type parameter (FTS vs semantic)."""
+
+    def test_html_has_semantic_checkbox(self, client):
+        """HTML page has an 'Include semantic results' checkbox."""
+        resp = client.get("/")
+        html = resp.text
+        assert 'id="include-semantic"' in html
+        assert "semantic" in html.lower()
+
+    def test_js_uses_type_param(self, client):
+        """app.js uses the type parameter in search requests."""
+        resp = client.get("/static/app.js")
+        js = resp.text
+        assert "type=" in js
+        assert "include-semantic" in js
