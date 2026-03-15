@@ -15,6 +15,7 @@ curated-facts.md
 # Python
 __pycache__/
 *.pyc
+*.egg-info/
 .venv/
 
 # OS

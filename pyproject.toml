@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "claude-memory"
+version = "0.1.0"
+description = "Conversation memory system — ingests Claude Code JSONL logs into SQLite + FTS5 + vector embeddings."
+readme = "README.md"
+license = "CC-BY-NC-4.0"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "httpx",
+]
+
+[project.optional-dependencies]
+embeddings = ["sentence-transformers"]
+mcp = ["mcp"]
+all = ["claude-memory[embeddings,mcp]"]
+dev = ["pytest"]
+
+[project.scripts]
+claude-recall = "src.claude_recall:cli"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
