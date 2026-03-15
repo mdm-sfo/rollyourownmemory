@@ -7,6 +7,11 @@ import sqlite3
 import sys
 from pathlib import Path
 
+try:
+    from src.memory_db import get_conn
+except ImportError:
+    from memory_db import get_conn
+
 MEMORY_DIR = Path(__file__).parent.parent
 DB_PATH = MEMORY_DIR / "memory.db"
 
@@ -41,7 +46,7 @@ def store_embeddings(conn, message_ids, vectors, model_name):
 
 
 def embed_messages(model_name=DEFAULT_MODEL, limit=None, batch_size=BATCH_SIZE):
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = get_conn(str(DB_PATH))
     rows = get_unembedded_messages(conn, limit)
 
     if not rows:
@@ -74,8 +79,7 @@ def search_similar(query, conn=None, model=None, top_k=10, project=None,
     """Search for messages semantically similar to query text."""
     own_conn = conn is None
     if own_conn:
-        conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
+        conn = get_conn(str(DB_PATH))
 
     if model is None:
         model = get_model()
@@ -195,7 +199,7 @@ def main():
                   f"[{r.get('machine', '')}] ({r['role']}) score={r['score']:.3f}")
             print(f"> {content}")
     elif args.command == "stats":
-        conn = sqlite3.connect(str(DB_PATH))
+        conn = get_conn(str(DB_PATH))
         total = conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
         embedded = conn.execute("SELECT COUNT(*) FROM embeddings").fetchone()[0]
         conn.close()

@@ -8,16 +8,34 @@ from typing import Optional
 
 from mcp.server import FastMCP
 
+try:
+    from src.memory_db import (
+        get_conn as _get_conn,
+        search_fts,
+        search_facts_fts,
+        get_session_messages,
+        list_recent_sessions,
+        store_fact,
+        DB_PATH,
+    )
+except ImportError:
+    from memory_db import (
+        get_conn as _get_conn,
+        search_fts,
+        search_facts_fts,
+        get_session_messages,
+        list_recent_sessions,
+        store_fact,
+        DB_PATH,
+    )
+
 MEMORY_DIR = Path(__file__).parent.parent
-DB_PATH = MEMORY_DIR / "memory.db"
 
 mcp = FastMCP("claude-memory")
 
 
 def get_conn():
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    return conn
+    return _get_conn(str(DB_PATH))
 
 
 @mcp.tool()
@@ -33,28 +51,9 @@ def memory_search(query: str, limit: int = 5, project: Optional[str] = None,
         since: Only results after this date (ISO 8601, e.g. '2026-03-01')
     """
     conn = get_conn()
-    sql = """
-        SELECT m.id, m.session_id, m.project, m.role, m.content,
-               m.timestamp, m.machine
-        FROM messages_fts
-        JOIN messages m ON m.id = messages_fts.rowid
-        WHERE messages_fts MATCH ?
-    """
-    params = [query]
-    if project:
-        sql += " AND m.project LIKE ?"
-        params.append(f"%{project}%")
-    if since:
-        sql += " AND m.timestamp >= ?"
-        params.append(since)
-    if role:
-        sql += " AND m.role = ?"
-        params.append(role)
-    sql += " ORDER BY messages_fts.rank LIMIT ?"
-    params.append(limit)
-
     try:
-        rows = conn.execute(sql, params).fetchall()
+        rows = search_fts(conn, query, project=project, since=since,
+                          role=role, limit=limit)
     except sqlite3.OperationalError as e:
         conn.close()
         return f"FTS5 query error: {e}. Use simple keywords or quoted phrases."
@@ -68,7 +67,7 @@ def memory_search(query: str, limit: int = 5, project: Optional[str] = None,
         ts = (r["timestamp"] or "unknown")[:16]
         proj = r["project"] or "no-project"
         content = r["content"][:400] + "..." if len(r["content"]) > 400 else r["content"]
-        results.append(f"[{ts}] {proj} [{r['machine'] or ''}] ({r['role']})\n{content}")
+        results.append(f"[{ts}] {proj} [{r.get('machine') or ''}] ({r['role']})\n{content}")
 
     return f"Found {len(rows)} results for \"{query}\":\n\n" + "\n\n---\n\n".join(results)
 
@@ -117,14 +116,7 @@ def memory_get_session(session_id: str, limit: int = 50) -> str:
         limit: Max messages to return (default 50)
     """
     conn = get_conn()
-    if len(session_id) < 36:
-        sql = "SELECT * FROM messages WHERE session_id LIKE ? ORDER BY timestamp, id LIMIT ?"
-        params = [f"{session_id}%", limit]
-    else:
-        sql = "SELECT * FROM messages WHERE session_id = ? ORDER BY timestamp, id LIMIT ?"
-        params = [session_id, limit]
-
-    rows = conn.execute(sql, params).fetchall()
+    rows = get_session_messages(conn, session_id, limit=limit)
     conn.close()
 
     if not rows:
@@ -152,23 +144,7 @@ def memory_list_sessions(limit: int = 15, project: Optional[str] = None,
         since: Only sessions after this date
     """
     conn = get_conn()
-    sql = """
-        SELECT session_id, project, machine,
-               MIN(timestamp) as first_msg, MAX(timestamp) as last_msg,
-               COUNT(*) as msg_count
-        FROM messages WHERE session_id IS NOT NULL
-    """
-    params = []
-    if project:
-        sql += " AND project LIKE ?"
-        params.append(f"%{project}%")
-    if since:
-        sql += " AND timestamp >= ?"
-        params.append(since)
-    sql += " GROUP BY session_id ORDER BY last_msg DESC LIMIT ?"
-    params.append(limit)
-
-    rows = conn.execute(sql, params).fetchall()
+    rows = list_recent_sessions(conn, project=project, since=since, limit=limit)
     if not rows:
         conn.close()
         return "No sessions found."
@@ -177,7 +153,7 @@ def memory_list_sessions(limit: int = 15, project: Optional[str] = None,
     for r in rows:
         sid = (r["session_id"] or "unknown")[:8]
         proj = r["project"] or "no-project"
-        date = (r["last_msg"] or "")[:10]
+        date = (r.get("last_msg") or "")[:10]
         topic_row = conn.execute(
             "SELECT content FROM messages WHERE session_id = ? AND role = 'user' ORDER BY timestamp LIMIT 1",
             (r["session_id"],),
@@ -200,20 +176,8 @@ def memory_search_facts(query: str, category: Optional[str] = None,
         limit: Max results (default 10)
     """
     conn = get_conn()
-    sql = """
-        SELECT f.* FROM facts_fts
-        JOIN facts f ON f.id = facts_fts.rowid
-        WHERE facts_fts MATCH ? AND f.confidence > 0
-    """
-    params = [query]
-    if category:
-        sql += " AND f.category = ?"
-        params.append(category)
-    sql += " ORDER BY f.confidence DESC, f.timestamp DESC LIMIT ?"
-    params.append(limit)
-
     try:
-        rows = conn.execute(sql, params).fetchall()
+        rows = search_facts_fts(conn, query, category=category, limit=limit)
     except sqlite3.OperationalError:
         conn.close()
         return f"No facts found for \"{query}\""
@@ -224,8 +188,6 @@ def memory_search_facts(query: str, category: Optional[str] = None,
 
     lines = []
     for r in rows:
-        ts = (r["timestamp"] or "")[:10]
-        proj = r["project"] or "general"
         lines.append(f"[{r['category']}] (conf={r['confidence']:.1f}) {r['fact']}")
 
     return f"Facts matching \"{query}\":\n\n" + "\n".join(lines)
@@ -245,12 +207,8 @@ def memory_add_fact(fact: str, category: str, project: Optional[str] = None) -> 
     if category not in valid:
         return f"Invalid category. Must be one of: {', '.join(sorted(valid))}"
 
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.execute(
-        "INSERT INTO facts (fact, category, confidence, project) VALUES (?, ?, 1.0, ?)",
-        (fact, category, project),
-    )
-    conn.commit()
+    conn = get_conn()
+    store_fact(conn, fact=fact, category=category, confidence=1.0, project=project)
     conn.close()
     return f"Stored fact: [{category}] {fact}"
 

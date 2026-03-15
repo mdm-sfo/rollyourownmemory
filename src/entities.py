@@ -9,6 +9,11 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+try:
+    from src.memory_db import get_conn
+except ImportError:
+    from memory_db import get_conn
+
 MEMORY_DIR = Path(__file__).parent.parent
 DB_PATH = MEMORY_DIR / "memory.db"
 
@@ -208,7 +213,7 @@ def get_unprocessed_messages(conn, limit=None):
 
 
 def extract_all(limit=None):
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = get_conn(str(DB_PATH))
     rows = get_unprocessed_messages(conn, limit)
 
     if not rows:
@@ -262,7 +267,7 @@ def main():
     if args.command == "run":
         extract_all(limit=args.limit)
     elif args.command == "show":
-        conn = sqlite3.connect(str(DB_PATH))
+        conn = get_conn(str(DB_PATH))
         sql = """
             SELECT name, entity_type, mention_count, first_seen, last_seen
             FROM entities
@@ -290,7 +295,7 @@ def main():
             print(f"{name:<35} {etype:<10} {count:>8}  {fs:<12} {ls:<12}")
 
     elif args.command == "find":
-        conn = sqlite3.connect(str(DB_PATH))
+        conn = get_conn(str(DB_PATH))
         rows = conn.execute("""
             SELECT DISTINCT em.session_id, m.project, m.timestamp, m.content
             FROM entity_mentions em
@@ -314,7 +319,7 @@ def main():
             print(f"  {snippet}\n")
 
     elif args.command == "stats":
-        conn = sqlite3.connect(str(DB_PATH))
+        conn = get_conn(str(DB_PATH))
         total = conn.execute("SELECT COUNT(*) FROM entities WHERE id > 0").fetchone()[0]
         mentions = conn.execute("SELECT COUNT(*) FROM entity_mentions WHERE entity_id > 0").fetchone()[0]
         types = conn.execute(

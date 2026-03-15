@@ -21,6 +21,11 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+try:
+    from src.memory_db import get_conn
+except ImportError:
+    from memory_db import get_conn
+
 MEMORY_DIR = Path(__file__).parent.parent
 DB_PATH = MEMORY_DIR / "memory.db"
 
@@ -65,8 +70,7 @@ def generate_memory_context(project=None, focus=None, max_tokens=2000, auto_dete
     if project is None and auto_detect:
         project = detect_project_from_cwd()
 
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
+    conn = get_conn(str(DB_PATH))
     sections = []
 
     now = datetime.now(timezone.utc)

@@ -14,6 +14,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+try:
+    from src.memory_db import get_conn
+except ImportError:
+    from memory_db import get_conn
+
 MEMORY_DIR = Path(__file__).parent.parent
 DB_PATH = MEMORY_DIR / "memory.db"
 
@@ -232,7 +237,7 @@ def store_facts(conn, facts):
 
 
 def distill(use_llm=False, api_base=None, limit=None):
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = get_conn(str(DB_PATH))
     sessions = get_undistilled_sessions(conn)
 
     if limit:
@@ -302,8 +307,7 @@ def main():
     if args.command == "run":
         distill(use_llm=args.llm, api_base=args.api_base, limit=args.limit)
     elif args.command == "show":
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
+        conn = get_conn(str(DB_PATH))
 
         if args.search:
             sql = """
@@ -343,7 +347,7 @@ def main():
             print(f"  {r['fact']}\n")
 
     elif args.command == "stats":
-        conn = sqlite3.connect(str(DB_PATH))
+        conn = get_conn(str(DB_PATH))
         total_sessions = conn.execute("SELECT COUNT(DISTINCT session_id) FROM messages").fetchone()[0]
         distilled = conn.execute("SELECT COUNT(DISTINCT session_id) FROM facts").fetchone()[0]
         total_facts = conn.execute("SELECT COUNT(*) FROM facts WHERE confidence > 0").fetchone()[0]

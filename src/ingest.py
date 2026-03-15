@@ -10,6 +10,11 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
+try:
+    from src.memory_db import get_conn
+except ImportError:
+    from memory_db import get_conn
+
 MEMORY_DIR = Path(__file__).parent.parent
 DB_PATH = MEMORY_DIR / "memory.db"
 STATE_PATH = MEMORY_DIR / "state.json"
@@ -307,7 +312,7 @@ def main():
     state = {} if args.full else load_state()
     sources = discover_sources()
 
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = get_conn(str(DB_PATH))
     init_db(conn)
 
     before_count = conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]

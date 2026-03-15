@@ -13,6 +13,11 @@ import sqlite3
 import sys
 from pathlib import Path
 
+try:
+    from src.memory_db import get_conn
+except ImportError:
+    from memory_db import get_conn
+
 MEMORY_DIR = Path(__file__).parent.parent
 DB_PATH = MEMORY_DIR / "memory.db"
 CURATE_FILE = MEMORY_DIR / "curated-facts.md"
@@ -22,8 +27,7 @@ CATEGORIES = ["preference", "decision", "learning", "context", "tool", "pattern"
 
 def review_facts(min_confidence=0.0, max_confidence=0.89, limit=20, category=None):
     """Interactive review of auto-extracted facts. Approve, reject, or edit."""
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
+    conn = get_conn(str(DB_PATH))
 
     sql = "SELECT * FROM facts WHERE confidence > ? AND confidence <= ?"
     params = [min_confidence, max_confidence]
@@ -113,7 +117,7 @@ def add_fact_interactive():
 
     project = input("  Project (or Enter for general): ").strip() or None
 
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = get_conn(str(DB_PATH))
     conn.execute(
         "INSERT INTO facts (fact, category, confidence, project) VALUES (?, ?, 1.0, ?)",
         (fact, category, project),
@@ -165,7 +169,7 @@ def import_facts(filepath):
         return
 
     text = path.read_text()
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = get_conn(str(DB_PATH))
 
     current_category = None
     imported = 0
@@ -194,7 +198,7 @@ def import_facts(filepath):
 
 def export_facts(min_confidence=0.9):
     """Export high-confidence facts as markdown."""
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = get_conn(str(DB_PATH))
     rows = conn.execute(
         "SELECT fact, category, project FROM facts WHERE confidence >= ? ORDER BY category, project",
         (min_confidence,),
@@ -258,7 +262,7 @@ def main():
     elif args.command == "export":
         export_facts(min_confidence=args.min_confidence)
     elif args.command == "stats":
-        conn = sqlite3.connect(str(DB_PATH))
+        conn = get_conn(str(DB_PATH))
         total = conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0]
         curated = conn.execute("SELECT COUNT(*) FROM facts WHERE confidence = 1.0").fetchone()[0]
         llm = conn.execute("SELECT COUNT(*) FROM facts WHERE confidence >= 0.8 AND confidence < 1.0").fetchone()[0]

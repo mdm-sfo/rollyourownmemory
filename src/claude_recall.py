@@ -6,6 +6,23 @@ import sqlite3
 import sys
 from pathlib import Path
 
+try:
+    from src.memory_db import (
+        get_conn,
+        search_fts as _search_fts,
+        search_facts_fts,
+        get_session_messages,
+        list_recent_sessions,
+    )
+except ImportError:
+    from memory_db import (
+        get_conn,
+        search_fts as _search_fts,
+        search_facts_fts,
+        get_session_messages,
+        list_recent_sessions,
+    )
+
 MEMORY_DIR = Path(__file__).parent.parent
 DB_PATH = MEMORY_DIR / "memory.db"
 
@@ -16,33 +33,10 @@ if not DB_PATH.exists():
 def search_fts(query: str, project: str | None = None, since: str | None = None,
                limit: int = 5, role: str | None = None) -> list[dict]:
     """Full-text keyword search via FTS5."""
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-
-    sql = """
-        SELECT m.id, m.session_id, m.project, m.role, m.content,
-               m.timestamp, m.machine, messages_fts.rank
-        FROM messages_fts
-        JOIN messages m ON m.id = messages_fts.rowid
-        WHERE messages_fts MATCH ?
-    """
-    params: list = [query]
-
-    if project:
-        sql += " AND m.project LIKE ?"
-        params.append(f"%{project}%")
-    if since:
-        sql += " AND m.timestamp >= ?"
-        params.append(since)
-    if role:
-        sql += " AND m.role = ?"
-        params.append(role)
-
-    sql += " ORDER BY messages_fts.rank LIMIT ?"
-    params.append(limit)
-
+    conn = get_conn(str(DB_PATH))
     try:
-        rows = conn.execute(sql, params).fetchall()
+        return _search_fts(conn, query, project=project, since=since,
+                           role=role, limit=limit)
     except sqlite3.OperationalError as e:
         if "fts5" in str(e).lower():
             print(f"FTS5 query error: {e}", file=sys.stderr)
@@ -51,8 +45,6 @@ def search_fts(query: str, project: str | None = None, since: str | None = None,
         raise
     finally:
         conn.close()
-
-    return [dict(r) for r in rows]
 
 
 def search_semantic(query: str, project: str | None = None, since: str | None = None,
@@ -76,97 +68,52 @@ def search_semantic(query: str, project: str | None = None, since: str | None = 
 def search_facts(query: str, project: str | None = None, category: str | None = None,
                  limit: int = 10) -> list[dict]:
     """Search extracted facts."""
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-
-    sql = """
-        SELECT f.* FROM facts_fts
-        JOIN facts f ON f.id = facts_fts.rowid
-        WHERE facts_fts MATCH ?
-        AND f.confidence > 0
-    """
-    params: list = [query]
-
-    if project:
-        sql += " AND f.project LIKE ?"
-        params.append(f"%{project}%")
-    if category:
-        sql += " AND f.category = ?"
-        params.append(category)
-
-    sql += " ORDER BY f.confidence DESC, f.timestamp DESC LIMIT ?"
-    params.append(limit)
-
+    conn = get_conn(str(DB_PATH))
     try:
+        # search_facts_fts doesn't support project filter, add it manually
+        sql = """
+            SELECT f.* FROM facts_fts
+            JOIN facts f ON f.id = facts_fts.rowid
+            WHERE facts_fts MATCH ?
+            AND f.confidence > 0
+        """
+        params: list = [query]
+
+        if project:
+            sql += " AND f.project LIKE ?"
+            params.append(f"%{project}%")
+        if category:
+            sql += " AND f.category = ?"
+            params.append(category)
+
+        sql += " ORDER BY f.confidence DESC, f.timestamp DESC LIMIT ?"
+        params.append(limit)
+
         rows = conn.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
     except sqlite3.OperationalError:
-        rows = []
+        return []
     finally:
         conn.close()
-
-    return [dict(r) for r in rows]
 
 
 def get_session(session_id: str, limit: int = 50) -> list[dict]:
     """Retrieve all messages from a specific session."""
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-
-    # Support partial session ID matching
-    if len(session_id) < 36:
-        sql = """
-            SELECT id, session_id, project, role, content, timestamp, machine
-            FROM messages
-            WHERE session_id LIKE ?
-            ORDER BY timestamp, id
-            LIMIT ?
-        """
-        params = [f"{session_id}%", limit]
-    else:
-        sql = """
-            SELECT id, session_id, project, role, content, timestamp, machine
-            FROM messages
-            WHERE session_id = ?
-            ORDER BY timestamp, id
-            LIMIT ?
-        """
-        params = [session_id, limit]
-
-    rows = conn.execute(sql, params).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    conn = get_conn(str(DB_PATH))
+    try:
+        return get_session_messages(conn, session_id, limit=limit)
+    finally:
+        conn.close()
 
 
 def list_sessions(project: str | None = None, since: str | None = None,
                   limit: int = 20) -> list[dict]:
     """List recent sessions with summary info."""
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-
-    sql = """
-        SELECT session_id, project, machine,
-               MIN(timestamp) as first_msg,
-               MAX(timestamp) as last_msg,
-               COUNT(*) as msg_count,
-               GROUP_CONCAT(CASE WHEN role='user' THEN SUBSTR(content, 1, 80) END, ' | ') as snippets
-        FROM messages
-        WHERE session_id IS NOT NULL
-    """
-    params: list = []
-
-    if project:
-        sql += " AND project LIKE ?"
-        params.append(f"%{project}%")
-    if since:
-        sql += " AND timestamp >= ?"
-        params.append(since)
-
-    sql += " GROUP BY session_id ORDER BY last_msg DESC LIMIT ?"
-    params.append(limit)
-
-    rows = conn.execute(sql, params).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    conn = get_conn(str(DB_PATH))
+    try:
+        return list_recent_sessions(conn, project=project, since=since, limit=limit)
+    finally:
+        conn.close()
 
 
 def format_message_results(rows: list[dict], query: str, mode: str = "fts") -> str | None:
@@ -264,8 +211,7 @@ def format_sessions_list(rows: list[dict]) -> str | None:
 
 def generate_context(args: argparse.Namespace) -> None:
     """Generate a context block combining facts, recent activity, and relevant memories."""
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
+    conn = get_conn(str(DB_PATH))
     sections: list[str] = []
 
     # 1. High-confidence facts
