@@ -1,0 +1,15 @@
+{
+  "featureId": "readme-limitations",
+  "reviewedAt": "2026-03-15T07:30:00.000Z",
+  "commitId": "f8fa356a52b0916c80a8c038acb3f93f3f536c45",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean documentation-only change. The diff adds exactly 7 lines to README.md: a `## Limitations` heading followed by 4 bullet points, correctly placed before the `## Privacy` section. All 4 required topics are covered with accurate content matching the feature description: (1) RAM/FAISS/--batch-size guidance, (2) LLM quality/--llm/7B+ recommendation, (3) single-user limitation, (4) additive-only migrations with backup advice. Formatting is consistent with the rest of the README (bold lead phrases, inline code for CLI flags and file names). Commit message matches the spec exactly.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Feature readme-limitations passes review. The implementation is a clean, well-formatted 7-line addition to README.md that places a ## Limitations section before ## Privacy with all 4 required bullet points. Content is accurate, formatting matches existing README conventions, commit message is correct, and all existing tests continue to pass. No issues found."
+}

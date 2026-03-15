@@ -1,0 +1,45 @@
+{
+  "featureId": "test-suite",
+  "reviewedAt": "2026-03-15T07:30:00Z",
+  "commitId": "174ac47dbf900774b8c367da2849bf84092e55f6",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean, well-structured test suite covering all specified requirements. 12 tests across 3 files (conftest.py, test_ingest.py, test_memory_db.py). All 6 required test functions implemented with correct assertions. conftest.py provides a shared in-memory SQLite fixture initialized from schema.sql. test_ingest.py covers derive_project (3 cases), parse_history_file (temp JSONL), and extract_text_content (string + list-of-blocks + 3 edge cases). test_memory_db.py covers get_conn pragmas (WAL + busy_timeout via tmp_path for real file), FTS search round-trip, and fact store+search round-trip. The worker went beyond minimum requirements by adding extra edge-case tests for extract_text_content (None, whitespace, non-text blocks). All tests pass in 0.04s.",
+    "issues": [
+      {
+        "file": "tests/test_ingest.py",
+        "line": 56,
+        "severity": "non_blocking",
+        "description": "test_parse_temp_jsonl uses tempfile.NamedTemporaryFile(delete=False) with manual Path.unlink() cleanup at line 70. If an assertion fails before cleanup, the temp file leaks. Could use pytest's tmp_path fixture or a try/finally block instead for safer cleanup."
+      },
+      {
+        "file": "tests/test_memory_db.py",
+        "line": 37,
+        "severity": "non_blocking",
+        "description": "TestSearchFts and TestStoreAndSearchFacts both manually set db.row_factory = sqlite3.Row at the start of each test method. This is needed because conftest.py's db fixture intentionally returns a raw connection. While this works correctly, a minor improvement would be an additional fixture (e.g., db_row) that sets row_factory automatically to reduce boilerplate."
+      },
+      {
+        "file": "tests/test_ingest.py",
+        "line": 1,
+        "severity": "non_blocking",
+        "description": "AGENTS.md specifies 'Functions over classes — match existing style. No OOP wrappers unless the existing code uses them.' The test files use classes (TestDeriveProject, TestSearchFts, etc.) for grouping, which is standard pytest convention for organizing test methods. This is an acceptable deviation since test classes are a widely-accepted pytest pattern, not OOP wrappers."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md says 'Functions over classes' but test files use test classes (TestDeriveProject, TestSearchFts, etc.). This is standard pytest convention and acceptable, but AGENTS.md could clarify that test classes for grouping are fine.",
+      "evidence": "tests/test_ingest.py uses class TestDeriveProject, class TestParseHistoryFile, class TestExtractTextContent; tests/test_memory_db.py uses class TestGetConnSetsPragmas, class TestSearchFts, class TestStoreAndSearchFacts. AGENTS.md says 'Functions over classes — match existing style. No OOP wrappers.'"
+    },
+    {
+      "area": "conventions",
+      "observation": "The test files import from 'src.ingest' and 'src.memory_db' (dotted package path from repo root). This import style depends on the package being installed in editable mode (pip install -e). This pattern should be documented in AGENTS.md testing section to avoid confusion.",
+      "evidence": "tests/test_ingest.py:7 — 'from src.ingest import derive_project, extract_text_content, parse_history_file'; tests/test_memory_db.py:6 — 'from src.memory_db import get_conn, search_facts_fts, search_fts, store_fact'. Works because pyproject.toml installs the package in editable mode."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The test-suite feature is a clean PASS. All 6 required test functions are implemented correctly with appropriate assertions. The worker covered all 3 derive_project cases, temp JSONL parsing, both string and list-of-blocks extract_text_content formats, WAL+busy_timeout pragmas, FTS message search, and fact store+search round-trip. Extra edge cases were added for extract_text_content. All 12 tests pass in 0.04s. Two non-blocking code quality suggestions: safer temp file cleanup in test_parse_temp_jsonl, and potential db_row fixture to reduce row_factory boilerplate."
+}
