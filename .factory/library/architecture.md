@@ -1,41 +1,27 @@
 # Architecture
 
-**What belongs here:** Architectural decisions, patterns, module relationships.
+## Web App Architecture
 
----
+- **Backend:** FastAPI in `src/web.py`, served by uvicorn on port 8585
+- **Frontend:** Vanilla HTML/CSS/JS in `static/` directory, served as static files by FastAPI
+- **Database:** SQLite `memory.db` accessed via `src/memory_db.py` (get_conn() for WAL + busy_timeout)
+- **LLM:** ollama at localhost:11434 for Ask mode synthesis (llama3.3:70b)
+- **Semantic search:** FAISS index via `src/embed.py` search_similar()
 
-## Module Structure
+## Existing Pipeline (DO NOT MODIFY)
 
-- `src/ingest.py` — ETL: JSONL → SQLite. Standalone, stdlib only.
-- `src/embed.py` — Sentence-transformer embeddings. Requires venv.
-- `src/distill.py` — Fact extraction via regex + optional LLM. Requires venv for httpx. Also imports from embed.py for fact deduplication (sentence-transformers).
-- `src/entities.py` — Entity/tool/library extraction. Standalone.
-- `src/inject.py` — Generates memory-context.md. Requires venv.
-- `src/curate.py` — Interactive fact curation. Standalone.
-- `src/mcp_server.py` — MCP server for Claude Code. Requires venv (mcp package).
-- `src/memory_db.py` — (NEW) Shared query module. All DB access goes through here.
-- `src/claude_recall.py` — (NEW) CLI module, importable entry point for pyproject.toml.
-- `bin/claude-recall` — CLI script, thin wrapper around src/claude_recall.py.
-
-## Database Schema
-
-- `messages` — raw conversation messages with FTS5 index
-- `embeddings` — float32 numpy blobs per message
-- `facts` — extracted preferences/decisions with FTS5 index
-- `entities` — tools/libraries/services mentioned
-- `entity_mentions` — links entities to messages
-- `processed_messages` — (NEW) tracks which processor has handled each message
-- `facts.last_validated` — (NEW) timestamp for fact decay
+- `src/ingest.py` — JSONL -> SQLite ETL
+- `src/embed.py` — Sentence-transformer embeddings + FAISS
+- `src/distill.py` — LLM fact extraction
+- `src/entities.py` — Entity extraction
+- `src/inject.py` — Context generation (called via subprocess for preview)
+- `src/curate.py` — CLI fact curation
+- `src/mcp_server.py` — MCP tools server
+- `src/memory_db.py` — Shared DB functions (used by web app)
 
 ## Key Patterns
 
-- Every module defines `MEMORY_DIR = Path(__file__).parent.parent` and `DB_PATH = MEMORY_DIR / "memory.db"`
-- FTS5 tables use content-sync triggers (see schema.sql)
-- Argparse subcommands pattern for CLIs with multiple operations
-- Lazy imports for heavy optional deps (sentence-transformers, faiss)
-- Dual-import pattern in all consumer modules: `try: from src.memory_db import get_conn` / `except ImportError: from memory_db import get_conn` — supports both repo-root execution and src/-relative execution
-
-## Build System
-
-- Build backend is `setuptools.build_meta` (not `setuptools.backends._legacy:_Backend`)
-- `.gitignore` includes `*.egg-info/` for pip editable installs
+- All DB connections use `memory_db.get_conn()` which sets WAL mode + busy_timeout=5000
+- FTS5 queries can throw sqlite3.OperationalError on syntax errors — always wrap in try/except
+- Semantic search may be unavailable if FAISS index or sentence-transformers missing — always fallback to FTS
+- The web app is read-heavy with occasional writes (fact edits, CLAUDE.md saves)

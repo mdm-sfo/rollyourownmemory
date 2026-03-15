@@ -1,7 +1,12 @@
 commands:
-  install: cd /home/matthewmurray/claude-memory && .venv/bin/pip install -e ".[all,dev]"
-  test: cd /home/matthewmurray/claude-memory && .venv/bin/python -m pytest tests/ -v
-  typecheck: echo "No typecheck configured (no mypy/pyright in project)"
-  lint: echo "No linter configured"
+  install: .venv/bin/python -m pip install fastapi
+  test: .venv/bin/python -m pytest tests/ -v
+  start_web: cd /home/matthewmurray/claude-memory && .venv/bin/python -m uvicorn src.web:app --host 0.0.0.0 --port 8585
 
-services: {}
+services:
+  web:
+    start: cd /home/matthewmurray/claude-memory && .venv/bin/python -m uvicorn src.web:app --host 0.0.0.0 --port 8585 &
+    stop: lsof -ti :8585 | xargs kill 2>/dev/null || true
+    healthcheck: curl -sf http://localhost:8585/api/health
+    port: 8585
+    depends_on: []

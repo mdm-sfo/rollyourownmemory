@@ -1,14 +1,25 @@
 # Environment
 
-**What belongs here:** Required env vars, external dependencies, setup notes.
-**What does NOT belong here:** Service ports/commands (use `.factory/services.yaml`).
+## Required
 
----
+- Python 3.12 in `.venv/`
+- FastAPI + uvicorn + starlette (installed in .venv)
+- SQLite with FTS5 support (system default)
+- memory.db in project root
 
-- Python 3.12.3 (system)
-- Venv at `.venv/` with sentence-transformers, numpy, httpx
-- SQLite 3.x (system, with FTS5 support)
-- No external services required — everything is local
-- Optional: ollama for LLM-powered fact extraction (not required for this mission)
-- Database file: `memory.db` in repo root (gitignored)
-- State file: `state.json` in repo root (gitignored)
+## Optional (for full functionality)
+
+- ollama at localhost:11434 with llama3.3:70b (for Ask mode LLM synthesis)
+- sentence-transformers + numpy (for semantic search)
+- FAISS index file: memory.faiss + memory_ids.json
+
+## Ports
+
+- 8585: Web app (FastAPI + uvicorn)
+- 11434: ollama (pre-existing, not managed by this app)
+
+## Files
+
+- `~/.claude/CLAUDE.md` — User's global Claude Code instructions (read/write)
+- `~/.claude/memory-context.md` — Auto-generated context (read-only, regenerated via inject.py)
+- `memory.db` — SQLite database (read/write)

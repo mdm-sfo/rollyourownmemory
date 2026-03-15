@@ -1,53 +1,24 @@
 # User Testing
 
-**What belongs here:** Testing surface discovery, resource cost classification, validation approach.
-
----
-
 ## Validation Surface
 
-This is a CLI/library project with no web UI. The validation surface is:
-
-1. **CLI commands** — `bin/claude-recall` and `claude-recall` (pip-installed entry point)
-2. **Python module imports** — verifying all modules import cleanly
-3. **pytest** — unit and integration tests in `tests/`
-4. **Script execution** — running `src/*.py` scripts with `--help` and basic operations
-
-**Tools:** Direct CLI execution via shell commands. No agent-browser or tuistory needed.
+**Primary surface:** Web browser at http://localhost:8585
+**Tool:** agent-browser (available at ~/.factory/bin/agent-browser)
+**Setup:** Start FastAPI server via `cd /home/matthewmurray/claude-memory && .venv/bin/python -m uvicorn src.web:app --host 0.0.0.0 --port 8585`
+**Database:** Uses production memory.db which has real data (500+ facts, 13k+ messages, 400+ sessions)
+**LLM:** ollama at localhost:11434 with llama3.3:70b (required for Ask mode testing)
 
 ## Validation Concurrency
 
-**Surface: CLI/pytest**
-- Max concurrent validators: **5**
-- Rationale: 20 CPUs, 121 GB RAM. CLI tests are lightweight (~50 MB each). pytest runs are isolated. No resource concerns.
+**Machine:** 121GB RAM, 20 CPUs, ~95GB available at baseline
+**Per agent-browser instance:** ~300MB RAM
+**FastAPI server:** ~50MB RAM
+**Max concurrent validators:** 5 (70% headroom: 66GB / ~350MB per instance = easily 5+)
 
-## Testing Approach
+## Testing Notes
 
-- Verify module imports: `python3 -c "from src.memory_db import get_conn"`
-- Verify CLI: `claude-recall --help`, `bin/claude-recall --help`
-- Verify pytest: `.venv/bin/python -m pytest tests/ -v`
-- Verify FAISS operations with in-memory test data
-- Verify schema migrations on fresh `:memory:` database
-- Verify grep for bare `sqlite3.connect(` calls
-
-## Flow Validator Guidance: CLI
-
-**Surface:** CLI commands, Python imports, shell commands. No browser or TUI automation needed.
-
-**Testing tool:** Direct shell execution via `Execute` tool. No special skills required.
-
-**Isolation rules:**
-- Each validator operates read-only on the codebase — no file modifications.
-- All validators share the same venv at `.venv/` — this is safe since they only run read operations.
-- Use in-memory SQLite (`:memory:`) for any database assertions to avoid touching `memory.db`.
-- Working directory: `/home/matthewmurray/claude-memory`
-- Python executable: `.venv/bin/python` (has all deps installed including pytest)
-- The `claude-recall` entry point is installed in `.venv/bin/claude-recall`
-
-**Key paths:**
-- Schema file: `schema.sql`
-- Source modules: `src/memory_db.py`, `src/inject.py`, `src/distill.py`, `src/curate.py`, `src/entities.py`, `src/embed.py`, `src/ingest.py`, `src/mcp_server.py`, `src/claude_recall.py`, `src/__init__.py`
-- CLI script: `bin/claude-recall`
-- pyproject.toml: `pyproject.toml`
-
-**Evidence format:** Save text output files (command output, grep results) in the assigned evidence directory.
+- The memory.db has real user data — searches for "kalshi", "tailscale", "JWT" should return results
+- FAISS index (memory.faiss) exists for semantic search
+- ~/.claude/CLAUDE.md exists and has real content
+- inject.py --stdout produces real output
+- ollama should be running for Ask mode tests; if not, verify graceful degradation
