@@ -1,0 +1,39 @@
+{
+  "featureId": "web-app-scaffold",
+  "reviewedAt": "2026-03-15T16:10:00.000Z",
+  "commitId": "10c1b7f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The scaffold implementation is clean and covers all expected behaviors. Creates src/web.py (64 lines) with FastAPI app, health endpoint, static file mounting, JSON error handlers for 404/422, and index route. Creates static/index.html with nav bar (Search, Facts, Sessions, CLAUDE.md, Context Preview), search bar with Search/Ask mode toggle. Includes style.css (responsive, no CDN) and app.js (navigation routing, mode toggle, HTML escaping utility). Tests (15 in tests/test_web.py) cover health endpoint (happy path + DB failure), main page content, nav links, mode toggle, 404 JSON errors, static file serving, and CDN-free verification. All 41 tests pass (26 existing + 15 new). Worker verified via uvicorn + curl against all expected behaviors. Code follows existing codebase conventions: pathlib for paths, memory_db.get_conn() for DB access, no type hints.",
+    "issues": [
+      {
+        "file": "src/web.py",
+        "line": 38,
+        "severity": "non_blocking",
+        "description": "The 422 error handler exposes str(exc) in the response detail field, which could leak internal validation details to the client. Consider returning a sanitized message in production. Low risk for a scaffold but worth noting for future hardening."
+      },
+      {
+        "file": "src/web.py",
+        "line": 55,
+        "severity": "non_blocking",
+        "description": "Health endpoint creates a connection with memory_db.get_conn(), executes SELECT 1, and closes it. This creates a full connection (with WAL pragmas + migrations) on every health check. For a health endpoint that may be polled frequently, a lighter check (e.g., just checking the file exists) could reduce overhead. Non-blocking as the current approach is correct and safe."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md mentions 'CORS' in the mission plan overview ('FastAPI app with static file serving, CORS, SQLite connection') but the scaffold feature does not implement CORS middleware. Since the app serves both API and frontend from the same origin (port 8585), CORS is not strictly needed. However, the mission plan's mention could confuse future workers. AGENTS.md could clarify that CORS is not required when serving from a single origin.",
+      "evidence": "mission.md line: 'Backend API setup -- FastAPI app with static file serving, CORS, SQLite connection'. src/web.py has no CORS middleware."
+    },
+    {
+      "area": "skills",
+      "observation": "The web-worker skill procedure was followed correctly. Worker executed all 7 steps (read context, write tests RED, implement backend, implement frontend, run tests GREEN, manual verification, cleanup). skillFeedback confirms followedProcedure=true with no deviations. The skill's example handoff format closely matches the actual handoff structure.",
+      "evidence": "Transcript skeleton shows RED->GREEN->verify->commit flow. Handoff skillFeedback: {followedProcedure: true, deviations: [], suggestedChanges: []}"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The web-app-scaffold feature passes review. Implementation covers all 6 expected behaviors: uvicorn starts on port 8585, GET / returns HTML with nav bar and search UI, GET /api/health returns correct JSON, 404 returns JSON error, all assets are local (no CDN), and nav bar has all 5 required links. Tests are comprehensive (15 new, all passing alongside 26 existing). Two non-blocking issues noted: 422 handler exposes internal details in response, and health check creates a full DB connection with migrations on each poll. Worker followed the web-worker skill procedure correctly with RED-GREEN-verify-commit cycle."
+}

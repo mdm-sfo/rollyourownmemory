@@ -1,0 +1,50 @@
+{
+  "featureId": "search-api-and-frontend",
+  "reviewedAt": "2026-03-15T16:30:00.000Z",
+  "commitId": "5d811f1",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation of all 4 API endpoints and the full frontend. Backend correctly uses memory_db functions for FTS search, implements a custom _search_sessions_fts for session grouping, and wraps all FTS5 queries in try/except sqlite3.OperationalError. Semantic search is properly isolated in _semantic_search with a blanket try/except fallback. Fact inspect retrieves source_message, siblings, and entities via direct SQL with parameterized queries. Frontend uses escapeHtml consistently on all rendered content (confirmed 30+ callsites). Navigation with viewStack enables back-button behavior from inspect/session detail views. 31 new tests cover happy paths, error cases (404 JSON, FTS syntax), edge cases (empty queries, project filters, limits), and frontend XSS safety.",
+    "issues": [
+      {
+        "file": "src/web.py",
+        "line": 140,
+        "severity": "non_blocking",
+        "description": "Connection management uses manual conn.close() instead of context managers. If an exception occurs between get_conn() and close() (e.g., in the dict comprehension or serialization), the connection will leak. Consider using 'with' or try/finally for robustness."
+      },
+      {
+        "file": "src/web.py",
+        "line": 87,
+        "severity": "non_blocking",
+        "description": "The _semantic_search function imports src.embed lazily on every call. While this is intentional for graceful fallback when FAISS is unavailable, it means the sentence-transformers model is loaded on each request (~1.6s overhead per the handoff). A module-level lazy singleton pattern would be more efficient for production use."
+      },
+      {
+        "file": "src/web.py",
+        "line": 69,
+        "severity": "non_blocking",
+        "description": "_search_sessions_fts implements a raw SQL join with FTS5 directly in web.py rather than going through memory_db.py. This is justified since AGENTS.md prohibits modifying existing src/ files, but ideally this query pattern would eventually live in memory_db.py for consistency."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Static files mount is placed AFTER API route definitions in web.py to ensure /api/* routes take priority. This is an important FastAPI routing pattern not documented in AGENTS.md — future workers could accidentally break this by mounting static files at app init.",
+      "evidence": "src/web.py last line: app.mount('/static', ...) is after all @app.get() route definitions. Comment in code: '# Mount static files AFTER API routes so /api/* routes take priority'"
+    },
+    {
+      "area": "conventions",
+      "observation": "Worker deviated from the skill's Red-Green-Refactor procedure by writing tests and implementation together rather than tests-first. The skillFeedback acknowledges this and notes it's more efficient for API endpoints where response shapes are being designed simultaneously. This is a valid pragmatic deviation.",
+      "evidence": "handoff.skillFeedback.suggestedChanges: 'The skill mentions writing tests first (Red) then implementing (Green), but in practice writing tests and implementation together is more efficient for API endpoints where the exact response shape is being designed simultaneously.'"
+    },
+    {
+      "area": "skills",
+      "observation": "The web-worker skill's 'Write Tests First (Red)' step may be too rigid for API feature work where the response schema evolves during implementation. The skill could note that for new API endpoints, writing tests alongside implementation is acceptable.",
+      "evidence": "Skill step 2 says 'Write Tests First (Red)' and 'Run tests and confirm they FAIL (red)'. Worker feedback says this is impractical for new API endpoints."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. All 4 API endpoints (search, facts/{id}, sessions, sessions/{id}) are correctly implemented with proper error handling, parameterized SQL, and FTS5 syntax error recovery. The frontend implements all required views (search results, fact inspect, session list/detail) with consistent HTML escaping and back-navigation. 31 comprehensive tests cover all expected behaviors including edge cases. Three non-blocking issues noted: manual connection management without context managers, per-request model loading for semantic search, and raw SQL in web.py instead of memory_db.py (justified by AGENTS.md constraints). No security issues found — all SQL is parameterized and all rendered content is escaped."
+}

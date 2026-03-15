@@ -1,0 +1,51 @@
+{
+  "featureId": "ask-mode",
+  "reviewedAt": "2026-03-15T16:35:00.000Z",
+  "commitId": "f5d7a92",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation of Ask mode with SSE streaming via ollama. Backend correctly implements GET /api/ask as an async generator yielding SSE events (token, sources, done, error). Error handling covers connection failures, timeouts, empty queries, and no-results cases. Frontend uses fetch+ReadableStream for progressive token display, properly escapes all user content, and renders clickable fact citations that navigate to the inspect view via showFactInspect(). 13 new tests with comprehensive mocking of httpx cover all expected behaviors and validation assertions (VAL-SEARCH-005 through 008, VAL-CROSS-005, VAL-CROSS-006). All issues found are non-blocking.",
+    "issues": [
+      {
+        "file": "src/web.py",
+        "line": 306,
+        "severity": "non_blocking",
+        "description": "No HTTP status check on ollama response after client.stream(). If ollama returns a 4xx/5xx (e.g., model not found), the code silently parses error JSON, yields no tokens, then sends sources — resulting in an empty answer with citations below. Adding a response.status_code check before iterating would surface ollama-side errors to the user."
+      },
+      {
+        "file": "src/web.py",
+        "line": 316,
+        "severity": "non_blocking",
+        "description": "Token SSE data field does not handle newlines. If an ollama token contains a newline, the SSE format would be malformed (data: field split across lines without data: prefix). In practice LLM tokens are single words/subwords so this is unlikely, but the SSE spec requires multi-line data to use multiple 'data:' lines. Fix: token.replace('\\n', '\\ndata: ') or similar."
+      },
+      {
+        "file": "static/app.js",
+        "line": 151,
+        "severity": "non_blocking",
+        "description": "The 'receivedFirstToken' variable is tracked (set to true after first token event) but its value is never consumed for any conditional logic. The loading indicator hiding is independently handled inside processSSEEvent by checking loadingEl.style.display. This is dead code — harmless but unnecessary."
+      },
+      {
+        "file": "static/app.js",
+        "line": 148,
+        "severity": "non_blocking",
+        "description": "handleAsk() builds the URL as /api/ask?q=... but never includes the project filter parameter, even though the backend supports it. This is consistent with Search mode (which also has no project filter UI control), but means the project filter capability is backend-only for now."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "The httpx library is imported at module level in src/web.py ('import httpx') for async HTTP streaming to ollama, but the install command in services.yaml only lists 'pip install fastapi'. httpx is likely installed as a transitive dependency of httpx[http2] or fastapi's test extras, but should be explicitly listed as a direct dependency since it's a primary import used in production code.",
+      "evidence": "src/web.py:12 — 'import httpx'; .factory/services.yaml commands.install — '.venv/bin/python -m pip install fastapi' (no httpx)"
+    },
+    {
+      "area": "conventions",
+      "observation": "The OLLAMA_MODEL constant is hardcoded at module level in src/web.py. If the model changes, code must be modified. AGENTS.md documents the model ('llama3.3:70b') so this is consistent, but an environment variable or config option could improve flexibility. This is informational, not a violation.",
+      "evidence": "src/web.py:21 — OLLAMA_MODEL = 'llama3.3:70b'; AGENTS.md — 'Uses ollama at localhost:11434 for Ask mode synthesis (llama3.3:70b)'"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Ask mode feature passes review. The implementation fully covers all 7 expected behaviors and fulfills all 6 validation assertions (VAL-SEARCH-005/006/007/008, VAL-CROSS-005/006). Backend SSE streaming is correctly implemented with proper error handling for ollama unavailability. Frontend uses fetch+ReadableStream for progressive rendering with proper XSS escaping and clickable fact citations. 13 well-structured tests cover the full SSE protocol, error paths, and frontend integration. Four non-blocking issues found: missing ollama response status check, potential newline handling in SSE token data, unused receivedFirstToken variable, and project filter not wired to frontend UI. The worker followed the skill procedure faithfully with no deviations."
+}

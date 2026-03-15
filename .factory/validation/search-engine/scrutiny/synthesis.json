@@ -1,0 +1,98 @@
+{
+  "milestone": "search-engine",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": { "passed": true, "command": ".venv/bin/python -m pytest tests/ -v", "exitCode": 0, "detail": "85 tests passed, 3 deprecation warnings (SwigPyPacked/SwigPyObject/swigvarlink __module__)" },
+    "typecheck": { "passed": true, "command": "N/A", "exitCode": 0, "detail": "No typecheck configured in project (no mypy/pyright/ruff config found)" },
+    "lint": { "passed": true, "command": "N/A", "exitCode": 0, "detail": "No linter configured in project (no ruff/flake8/pylint config found)" }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "nonBlockingIssues": [
+    {
+      "featureId": "web-app-scaffold",
+      "severity": "non_blocking",
+      "description": "422 error handler exposes str(exc) in response detail field — could leak internal validation info. Low risk for internal tool."
+    },
+    {
+      "featureId": "web-app-scaffold",
+      "severity": "non_blocking",
+      "description": "Health endpoint creates full DB connection (WAL pragmas + migrations) on each poll. A lighter check could reduce overhead for frequent polling."
+    },
+    {
+      "featureId": "search-api-and-frontend",
+      "severity": "non_blocking",
+      "description": "Connection management uses manual conn.close() instead of context managers — potential connection leak on exceptions."
+    },
+    {
+      "featureId": "search-api-and-frontend",
+      "severity": "non_blocking",
+      "description": "Semantic search imports embed module and loads model per-request (~1.6s overhead). A lazy singleton pattern would be more efficient."
+    },
+    {
+      "featureId": "search-api-and-frontend",
+      "severity": "non_blocking",
+      "description": "Raw SQL session search query in web.py instead of memory_db.py. Justified by AGENTS.md constraint (no modifying existing src files)."
+    },
+    {
+      "featureId": "ask-mode",
+      "severity": "non_blocking",
+      "description": "No HTTP status check on ollama response — if ollama returns 4xx/5xx (e.g., model not found), user sees empty answer with citations."
+    },
+    {
+      "featureId": "ask-mode",
+      "severity": "non_blocking",
+      "description": "SSE token data field doesn't handle newlines per SSE spec. Unlikely in practice (LLM tokens are typically single words) but technically non-compliant."
+    },
+    {
+      "featureId": "ask-mode",
+      "severity": "non_blocking",
+      "description": "Dead 'receivedFirstToken' variable in app.js — tracked but never consumed."
+    },
+    {
+      "featureId": "ask-mode",
+      "severity": "non_blocking",
+      "description": "Project filter not wired to Ask mode UI (backend supports it, frontend doesn't send it)."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Clarify that CORS middleware is not needed since both API and frontend are served from the same origin (port 8585). The mission plan mentions CORS but it's unnecessary for single-origin deployment.",
+      "evidence": "mission.md mentions 'CORS' in backend API setup description, but all 3 workers correctly omitted it. Could confuse future workers.",
+      "isSystemic": false
+    },
+    {
+      "target": "skills",
+      "suggestion": "The web-worker skill's 'Write Tests First (Red)' step could be relaxed for new API endpoint work where the response schema is being designed during implementation. Note that writing tests alongside implementation is acceptable for new endpoints.",
+      "evidence": "search-api-and-frontend worker deviated from Red-Green by writing tests and implementation together. Worker feedback: 'writing tests and implementation together is more efficient for API endpoints where the exact response shape is being designed simultaneously'. Worker still achieved comprehensive test coverage (31 tests).",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "httpx not listed in services.yaml install command",
+      "reason": "httpx is already a direct dependency in pyproject.toml and installed as part of the project. services.yaml install command only adds fastapi as an additional dependency."
+    },
+    {
+      "observation": "OLLAMA_MODEL hardcoded at module level in src/web.py",
+      "reason": "Consistent with AGENTS.md documentation. Configurable model is a nice-to-have but not a convention violation. Informational only."
+    },
+    {
+      "observation": "Static files mount order (after API routes) is not documented",
+      "reason": "Already covered in architecture.md under 'Key Patterns' and has an inline code comment. The pattern is self-documenting in the codebase."
+    },
+    {
+      "observation": "web-worker skill procedure was followed correctly (web-app-scaffold)",
+      "reason": "Positive confirmation, not an actionable observation. No changes needed."
+    }
+  ],
+  "previousRound": null
+}
