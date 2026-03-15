@@ -184,6 +184,29 @@ Conversation:
 
 Return ONLY a JSON array, no other text."""
 
+    def _parse_llm_facts(text: str) -> list[dict]:
+        """Parse facts from LLM response text. Returns list of fact dicts or raises ValueError."""
+        match = re.search(r'\[.*\]', text, re.DOTALL)
+        if not match:
+            raise ValueError("No JSON array found in response")
+        raw_facts = json.loads(match.group())
+        facts = []
+        for f in raw_facts:
+            if "fact" in f and "category" in f and f["category"] in FACT_CATEGORIES:
+                facts.append({
+                    "fact": f["fact"][:500],
+                    "category": f["category"],
+                    "compressed_details": f.get("compressed_details", "")[:500],
+                    "confidence": 0.9,
+                    "source_message_id": user_msgs[0]["id"],
+                    "session_id": user_msgs[0].get("session_id"),
+                    "project": user_msgs[0].get("project"),
+                    "timestamp": user_msgs[0].get("timestamp"),
+                })
+        return facts
+
+    # Three-level retry: normal → conservative → heuristic fallback
+    # Level 1: Normal attempt (temp 0.1, timeout 180s)
     try:
         resp = httpx.post(
             f"{base}/chat/completions",
@@ -196,28 +219,38 @@ Return ONLY a JSON array, no other text."""
         )
         resp.raise_for_status()
         text = resp.json()["choices"][0]["message"]["content"]
-        # Extract JSON from response
-        match = re.search(r'\[.*\]', text, re.DOTALL)
-        if match:
-            raw_facts = json.loads(match.group())
-            facts = []
-            for f in raw_facts:
-                if "fact" in f and "category" in f and f["category"] in FACT_CATEGORIES:
-                    facts.append({
-                        "fact": f["fact"][:500],
-                        "category": f["category"],
-                        "compressed_details": f.get("compressed_details", "")[:500],
-                        "confidence": 0.9,
-                        "source_message_id": user_msgs[0]["id"],
-                        "session_id": user_msgs[0].get("session_id"),
-                        "project": user_msgs[0].get("project"),
-                        "timestamp": user_msgs[0].get("timestamp"),
-                    })
-            return facts
+        return _parse_llm_facts(text)
     except Exception as e:
-        print(f"LLM extraction failed: {e}", file=sys.stderr)
-        return []
+        reason = str(e)
+        print(
+            f"LLM extraction: normal attempt failed ({reason}), "
+            "retrying with conservative settings...",
+            file=sys.stderr,
+        )
 
+    # Level 2: Retry with lower temperature and shorter timeout
+    try:
+        resp = httpx.post(
+            f"{base}/chat/completions",
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.05,
+            },
+            timeout=90,
+        )
+        resp.raise_for_status()
+        text = resp.json()["choices"][0]["message"]["content"]
+        return _parse_llm_facts(text)
+    except Exception as e:
+        reason = str(e)
+        print(
+            f"LLM extraction: retry also failed ({reason}), "
+            "falling back to heuristic only",
+            file=sys.stderr,
+        )
+
+    # Level 3: Return empty — caller runs heuristic extraction separately
     return []
 
 
@@ -321,10 +354,11 @@ def store_facts(conn, facts):
         try:
             conn.execute(
                 """INSERT INTO facts (session_id, project, fact, category, confidence,
-                   source_message_id, timestamp)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   source_message_id, timestamp, compressed_details)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (f["session_id"], f["project"], f["fact"], f["category"],
-                 f["confidence"], f["source_message_id"], f["timestamp"]),
+                 f["confidence"], f["source_message_id"], f["timestamp"],
+                 f.get("compressed_details", "")),
             )
             inserted += 1
             # Add the newly inserted fact to existing embeddings for subsequent checks
