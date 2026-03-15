@@ -1,0 +1,88 @@
+{
+  "groupId": "cross-project-patterns",
+  "testedAt": "2026-03-15T00:00:00Z",
+  "isolation": {
+    "workingDirectory": "/home/matthewmurray/claude-memory",
+    "pythonExecutable": ".venv/bin/python",
+    "sourceFile": "src/distill.py",
+    "database": "read-only code inspection (no DB modifications)"
+  },
+  "toolsUsed": ["Execute", "Read", "Grep"],
+  "assertions": [
+    {
+      "id": "VAL-PATTERN-001",
+      "title": "patterns subcommand exists",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Execute `.venv/bin/python src/distill.py patterns --help`",
+          "expected": "Help output showing --model, --min-projects, --promote flags",
+          "observed": "Help output displayed all three flags: --model MODEL, --min-projects MIN_PROJECTS, --promote"
+        }
+      ],
+      "evidence": {
+        "terminalOutput": "advanced-features/cross-project-patterns/VAL-PATTERN-001-help-output.txt",
+        "consoleErrors": "none",
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PATTERN-002",
+      "title": "detect_cross_project_patterns function",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read src/distill.py and locate detect_cross_project_patterns function",
+          "expected": "Function with signature (conn, model, min_projects) that queries facts grouped by project and sends to LLM",
+          "observed": "Function found at line 484 with signature detect_cross_project_patterns(conn: sqlite3.Connection, model: Optional[str] = None, min_projects: int = 3) -> list[dict]"
+        },
+        {
+          "action": "Verify function queries facts grouped by project",
+          "expected": "SQL query grouping facts by project",
+          "observed": "SQL: SELECT project, fact, category, confidence, id FROM facts WHERE confidence > 0 AND project IS NOT NULL ORDER BY project, category. Results grouped into dict keyed by project."
+        },
+        {
+          "action": "Verify function sends to LLM for analysis",
+          "expected": "httpx POST call to LLM with cross-project analysis prompt",
+          "observed": "httpx.post to localhost:11434/v1/chat/completions with model_name, prompt describing cross-project pattern analysis, temperature 0.1, timeout 180"
+        }
+      ],
+      "evidence": {
+        "codeInspection": "advanced-features/cross-project-patterns/VAL-PATTERN-002-function-code.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PATTERN-003",
+      "title": "--promote flag inserts global facts",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read src/distill.py patterns command handler and locate --promote code path",
+          "expected": "When --promote is set, detected patterns are inserted as global facts with project=NULL and confidence=0.85",
+          "observed": "Lines 718-731: if args.promote block executes INSERT INTO facts (project, fact, category, confidence, timestamp) VALUES (NULL, ?, ?, 0.85, datetime('now')) for each pattern"
+        },
+        {
+          "action": "Verify project=NULL in INSERT",
+          "expected": "First VALUES parameter is NULL",
+          "observed": "VALUES (NULL, ?, ?, 0.85, datetime('now')) — project is explicitly NULL (global fact)"
+        },
+        {
+          "action": "Verify confidence=0.85",
+          "expected": "confidence value is 0.85",
+          "observed": "Hardcoded 0.85 in the INSERT statement"
+        }
+      ],
+      "evidence": {
+        "codeInspection": "advanced-features/cross-project-patterns/VAL-PATTERN-003-promote-code.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 3 assertions: 3 passed, 0 failed. VAL-PATTERN-001 confirmed via CLI --help output. VAL-PATTERN-002 and VAL-PATTERN-003 confirmed via code inspection of src/distill.py."
+}

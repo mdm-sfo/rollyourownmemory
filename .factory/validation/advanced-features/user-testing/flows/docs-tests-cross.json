@@ -1,0 +1,89 @@
+{
+  "groupId": "docs-tests-cross",
+  "testedAt": "2026-03-15T12:00:00Z",
+  "isolation": {
+    "workingDirectory": "/home/matthewmurray/claude-memory",
+    "pythonExecutable": ".venv/bin/python",
+    "database": "existing memory.db (read-only for stats), no in-memory DB needed",
+    "scope": "read-only codebase inspection and test execution"
+  },
+  "toolsUsed": ["Execute", "Read", "Grep"],
+  "assertions": [
+    {
+      "id": "VAL-DOC-004",
+      "title": "README team memory section",
+      "status": "pass",
+      "steps": [
+        { "action": "Grep README.md for 'Team.*Shared Memory'", "expected": "Section heading found", "observed": "Found at line 423: '## Team & Shared Memory'" },
+        { "action": "Read README.md from line 423", "expected": "Architecture options, privacy, checklist subsections", "observed": "Found '### Architecture Options' (3 options: Shared Database, Sync via Wormhole, Per-User Partitioning), '### Privacy Considerations' (5 bullet points), '### Team Setup Checklist' (5-step checklist)" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a",
+        "files": ["advanced-features/docs-tests-cross/VAL-DOC-004-readme-section.txt"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TEST-001",
+      "title": "Existing tests still pass",
+      "status": "pass",
+      "steps": [
+        { "action": "Run .venv/bin/python -m pytest tests/ -v", "expected": "All tests pass", "observed": "26 passed in 2.33s, exit code 0" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a",
+        "files": ["advanced-features/docs-tests-cross/VAL-TEST-001-pytest-output.txt"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TEST-002",
+      "title": "All Python files parse correctly",
+      "status": "pass",
+      "steps": [
+        { "action": "Run ast.parse on each src/*.py file", "expected": "All files parse without errors", "observed": "All 10 Python files (claude_recall.py, curate.py, distill.py, embed.py, entities.py, ingest.py, __init__.py, inject.py, mcp_server.py, memory_db.py) parsed OK" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a",
+        "files": ["advanced-features/docs-tests-cross/VAL-TEST-002-syntax-check.txt"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TEST-003",
+      "title": "distill.py stats still works",
+      "status": "pass",
+      "steps": [
+        { "action": "Run python3 src/distill.py stats", "expected": "Stats output without errors", "observed": "Output: Sessions: 422 (421 distilled), Facts: 507 with category breakdown. Exit code 0." }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a",
+        "files": ["advanced-features/docs-tests-cross/VAL-TEST-003-distill-stats.txt"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-001",
+      "title": "Compressed details round-trip",
+      "status": "pass",
+      "steps": [
+        { "action": "Inspect distill.py store_facts() for compressed_details INSERT", "expected": "compressed_details included in INSERT", "observed": "Line 368: INSERT INTO facts includes compressed_details column; line 372: value from f.get('compressed_details')" },
+        { "action": "Inspect mcp_server.py memory_search_facts for compressed_details display", "expected": "compressed_details shown in search results", "observed": "Line 328: SELECT includes f.compressed_details; lines 191-196: displayed as '[details compressed: {cd}]'" },
+        { "action": "Inspect mcp_server.py memory_inspect for compressed_details display", "expected": "compressed_details shown in inspect output", "observed": "Line 255: retrieves fact['compressed_details']; lines 256-258: displayed as '**Details compressed**: {compressed}' with recovery hint" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a",
+        "files": ["advanced-features/docs-tests-cross/VAL-CROSS-001-compressed-details-flow.txt"]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 5 assertions: 5 passed, 0 failed. README team memory section is complete with all required subsections. All 26 tests pass. All 10 src/*.py files parse cleanly. distill.py stats runs without error. compressed_details flows correctly through storage → FTS search → inspect display."
+}

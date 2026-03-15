@@ -1,0 +1,56 @@
+{
+  "group": "mcp-resume-feedback",
+  "testedAt": "2026-03-15T00:00:00Z",
+  "isolation": {
+    "workingDirectory": "/home/matthewmurray/claude-memory",
+    "pythonExecutable": ".venv/bin/python",
+    "database": "in-memory SQLite (temp files per assertion)",
+    "sourceFiles": ["src/mcp_server.py", "src/inject.py", "src/memory_db.py"]
+  },
+  "toolsUsed": ["Execute", "Read", "Grep"],
+  "assertions": {
+    "VAL-MCP-008": {
+      "status": "pass",
+      "evidence": "memory_resume_context is @mcp.tool() decorated. Parameters: ['project', 'session_id']",
+      "reason": "Tool exists with project and session_id parameters"
+    },
+    "VAL-MCP-009": {
+      "status": "pass",
+      "evidence": "Output has: messages=True, facts=True, entities=True, other_session_facts=True. Excerpt: ## Resume Context\\n\\n**Project**: test-project\\n**Session**: test-session...\\n### Last User Messages\\n- [2026-03-14 10:00] How do I configure webpack?\\n\\n### Decisions & Findings from This Session\\n- [learning] Webpack config uses module.exports\\n\\n### Entities in Play\\n- webpack (tool)\\n\\n### Recent Facts from Other Sessions\\n- [context] Python 3.12 is the default",
+      "reason": "Returns last session messages, facts, entities, recent facts from other sessions"
+    },
+    "VAL-MCP-010": {
+      "status": "pass",
+      "evidence": "memory_feedback is @mcp.tool() decorated. Parameters: ['fact_id', 'feedback', 'correction']",
+      "reason": "Tool exists with fact_id, feedback, correction parameters"
+    },
+    "VAL-MCP-011": {
+      "status": "pass",
+      "evidence": "Adjustments dict: {'correct': 0.05, 'helpful': 0.03, 'wrong': -0.5, 'outdated': -0.3, 'irrelevant': -0.15}. Execution: correct: 0.850==0.850 OK; helpful: 0.830==0.830 OK; wrong: 0.300==0.300 OK; outdated: 0.500==0.500 OK; irrelevant: 0.650==0.650 OK",
+      "reason": "All 5 feedback types produce correct confidence changes"
+    },
+    "VAL-MCP-012": {
+      "status": "pass",
+      "evidence": "Count 3->4, new fact conf=0.9, compressed_details='corrected from: Old wrong fact'",
+      "reason": "Wrong feedback with correction inserts new fact at confidence 0.9"
+    },
+    "VAL-MCP-017": {
+      "status": "pass",
+      "evidence": "Response to invalid type: \"Unknown feedback type 'bogus_type'. Use: correct, helpful, wrong, outdated, irrelevant\"",
+      "reason": "Returns error listing valid types for unknown feedback type"
+    },
+    "VAL-MCP-018": {
+      "status": "pass",
+      "evidence": "Response: \"No previous sessions found. Start a conversation first, then use this tool to resume context in future sessions.\"",
+      "reason": "Returns helpful message when no sessions exist"
+    },
+    "VAL-CROSS-003": {
+      "status": "pass",
+      "evidence": "inject.py filters confidence>=0.5: True. mcp_server UPDATE confidence: True. Before outdated: visible=True, After: conf=0.3, visible=False",
+      "reason": "Feedback chain correctly reduces confidence below inject threshold, fact no longer appears"
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 8 assertions: 8 passed, 0 failed. All MCP resume_context and feedback tools work correctly with proper parameter validation, confidence adjustments, correction insertion, and cross-system filtering."
+}

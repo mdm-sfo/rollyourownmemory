@@ -1,0 +1,33 @@
+{
+  "milestone": "advanced-features",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 16,
+    "passed": 16,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-MCP-008",
+    "VAL-MCP-009",
+    "VAL-MCP-010",
+    "VAL-MCP-011",
+    "VAL-MCP-012",
+    "VAL-MCP-017",
+    "VAL-MCP-018",
+    "VAL-CROSS-001",
+    "VAL-CROSS-003",
+    "VAL-DOC-004",
+    "VAL-PATTERN-001",
+    "VAL-PATTERN-002",
+    "VAL-PATTERN-003",
+    "VAL-TEST-001",
+    "VAL-TEST-002",
+    "VAL-TEST-003"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null
+}
