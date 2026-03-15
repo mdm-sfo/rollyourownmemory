@@ -1,0 +1,28 @@
+{
+  "featureId": "error-solution-categories",
+  "reviewedAt": "2026-03-15T13:30:00.000Z",
+  "commitId": "4b2b473",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean, minimal 11-line addition to src/distill.py. Adds 'error' and 'solution' to FACT_CATEGORIES dict with correct descriptions. Updates the LLM prompt Rules section with clear extraction guidance for both categories. Adds a well-crafted CORS preflight error/solution pair example that demonstrates the expected format including compressed_details. The mcp_server.py already had 'error' and 'solution' in its VALID_CATEGORIES set and memory_search_facts docstring, so no MCP changes were needed. All four fulfillment criteria (VAL-CAT-001, VAL-CAT-002, VAL-CAT-003, VAL-CROSS-004) are satisfied.",
+    "issues": [
+      {
+        "file": "src/mcp_server.py",
+        "line": 210,
+        "severity": "non_blocking",
+        "description": "The memory_add_fact docstring says 'category: One of: preference, decision, learning, context, tool, pattern' but omits 'error' and 'solution'. The runtime validation set (line 214) correctly includes all 8 categories, and memory_search_facts docstring (line 176) also lists all 8. This docstring inconsistency predates this feature (the worker correctly noted 'mcp_server.py already had error and solution in its VALID_CATEGORIES set') but the docstring was never updated. This could confuse MCP tool users who see the docstring but don't know 'error' and 'solution' are valid."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The memory_add_fact docstring in mcp_server.py lists only 6 categories while the validation set has 8. AGENTS.md says 'Category validation set already exists — add error and solution to it' but doesn't mention updating the docstring. When categories are added, both the validation set AND the docstring should be updated together.",
+      "evidence": "src/mcp_server.py:210 docstring says 'One of: preference, decision, learning, context, tool, pattern' but line 214 valid set includes 'error' and 'solution'. Compare to memory_search_facts at line 176 which correctly lists all 8."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The implementation correctly adds 'error' and 'solution' categories to FACT_CATEGORIES in distill.py, updates the LLM prompt with clear extraction rules and a realistic CORS error/solution example. The change is minimal (11 lines, 1 file), well-targeted, and all 26 tests pass. One non-blocking issue: the memory_add_fact docstring in mcp_server.py was not updated to list the new categories (though the runtime validation correctly accepts them). This is a pre-existing gap in the docstring that this feature's scope arguably should have caught, but does not affect functionality."
+}

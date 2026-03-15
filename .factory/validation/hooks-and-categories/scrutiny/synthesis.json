@@ -1,0 +1,57 @@
+{
+  "milestone": "hooks-and-categories",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": { "passed": true, "command": "cd /home/matthewmurray/claude-memory && .venv/bin/python -m pytest tests/ -v", "exitCode": 0 },
+    "typecheck": { "passed": true, "command": "echo \"No typecheck configured (no mypy/pyright in project)\"", "exitCode": 0 },
+    "lint": { "passed": true, "command": "echo \"No linter configured\"", "exitCode": 0 }
+  },
+  "reviewsSummary": {
+    "total": 2,
+    "passed": 1,
+    "failed": 1,
+    "failedFeatures": ["hook-script"]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "hook-script",
+      "severity": "blocking",
+      "description": "SessionEnd handler in hooks/memory-hook.sh line 48 calls `python3 src/embed.py --quiet 2>/dev/null &` but embed.py (a) requires a `build` subcommand and (b) does not accept a `--quiet` flag. This means embeddings are never generated during SessionEnd hooks, silently failing because stderr is redirected to /dev/null. The correct command should be `$MEMORY_ROOT/.venv/bin/python src/embed.py build 2>/dev/null &`."
+    }
+  ],
+  "nonBlockingIssues": [
+    {
+      "featureId": "hook-script",
+      "severity": "non_blocking",
+      "description": "All pipeline commands in hooks/memory-hook.sh use system `python3` instead of `$MEMORY_ROOT/.venv/bin/python`. embed.py requires numpy/sentence-transformers (venv-only), distill.py with --llm requires httpx (venv-only). When run as a hook by Claude Code (new shell, no venv activated), these will fail with ModuleNotFoundError. inject.py and ingest.py are stdlib-only and work with system python."
+    },
+    {
+      "featureId": "error-solution-categories",
+      "severity": "non_blocking",
+      "description": "The memory_add_fact docstring in mcp_server.py (line ~210) lists only 6 categories ('preference, decision, learning, context, tool, pattern') but omits 'error' and 'solution'. The runtime validation set correctly includes all 8 categories. This docstring inconsistency could confuse MCP tool users."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add convention: Hook scripts must use `$MEMORY_ROOT/.venv/bin/python` (not system `python3`) for any script that imports non-stdlib packages (embed.py, distill.py, inject.py, mcp_server.py). Only ingest.py and entities.py are stdlib-only safe.",
+      "evidence": "hook-script feature used system python3 for embed.py (numpy) and distill.py (httpx), which would fail outside venv. The cron setup in README correctly uses .venv/bin/python but this convention wasn't documented in AGENTS.md.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add convention: When adding categories/enums to validation sets, also update corresponding docstrings and user-facing documentation strings in the same commit.",
+      "evidence": "memory_add_fact runtime validation set has 8 categories but its docstring only lists 6. The mismatch went unnoticed across two features (mcp-inspect-tool added the validation entries, error-solution-categories was expected to catch it).",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "embed.py requires a `build` subcommand while ingest.py has flat arguments — CLI interfaces are inconsistent across modules",
+      "reason": "This is a pre-existing architectural choice, not something the worker should have been warned about. Each module's CLI is documented in its argparse setup. The real fix is correcting the specific hook command, not standardizing all CLIs."
+    }
+  ],
+  "previousRound": null
+}

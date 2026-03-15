@@ -1,0 +1,39 @@
+{
+  "featureId": "hook-script",
+  "reviewedAt": "2026-03-15T13:45:00.000Z",
+  "commitId": "3017399",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The hook script structure is well-designed: it correctly handles all 3 events (SessionStart, SessionEnd, PreCompact), reads stdin JSON via python3, extracts the appropriate event-specific fields (source/reason/trigger), and outputs proper hookSpecificOutput JSON for SessionStart. The README documentation is comprehensive with correct settings.json configuration format. However, there is one blocking bug: the SessionEnd handler calls `embed.py` with a non-existent `--quiet` flag and without the required `build` subcommand, causing the embedding step to silently fail. Additionally, the script uses system `python3` instead of the venv interpreter, which would cause embed.py and distill.py to fail due to missing packages (numpy, httpx) even if the argument error were fixed.",
+    "issues": [
+      {
+        "file": "hooks/memory-hook.sh",
+        "line": 47,
+        "severity": "blocking",
+        "description": "SessionEnd handler calls `python3 src/embed.py --quiet 2>/dev/null &` but embed.py (a) requires a subcommand (`build`) and (b) does not accept a `--quiet` flag. Running this produces `error: unrecognized arguments: --quiet` (confirmed via `.venv/bin/python src/embed.py --quiet`). The process fails silently because stderr is redirected to /dev/null. Should be: `python3 src/embed.py build 2>/dev/null &` (or better, `$MEMORY_ROOT/.venv/bin/python src/embed.py build 2>/dev/null &`)."
+      },
+      {
+        "file": "hooks/memory-hook.sh",
+        "line": 46,
+        "severity": "non_blocking",
+        "description": "All pipeline commands use `python3` (system interpreter) instead of `$MEMORY_ROOT/.venv/bin/python`. embed.py requires numpy/sentence-transformers (venv-only), and distill.py with --llm requires httpx (venv-only). When run as a hook by Claude Code (new shell, no venv activated), these will fail with ModuleNotFoundError. The cron setup in README correctly uses `.venv/bin/python` — the hook should follow the same pattern. inject.py and ingest.py are stdlib-only and work with system python, but consistency with the venv would be safer."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Hook script uses system `python3` while cron setup in README uses `.venv/bin/python`. There is no guidance in AGENTS.md about which python interpreter to use for hook scripts vs cron jobs. This led the worker to use the wrong interpreter for scripts that require venv packages.",
+      "evidence": "hooks/memory-hook.sh lines 30-55 use `python3`, while README.md cron section (line ~240) uses `.venv/bin/python`"
+    },
+    {
+      "area": "knowledge",
+      "observation": "The worker did not realize that embed.py requires a `build` subcommand and has no `--quiet` flag, while ingest.py accepts `--quiet` directly. This discrepancy between the two scripts' CLI interfaces is not documented anywhere and led to the blocking bug.",
+      "evidence": "embed.py uses subcommands (build/search/rebuild_index/stats) while ingest.py has a flat argument interface with --quiet. Worker assumed both had similar interfaces."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The hook-script feature is structurally sound but has one blocking bug: the SessionEnd handler calls `embed.py --quiet` which fails because (1) embed.py requires a `build` subcommand and (2) does not have a `--quiet` flag. This means embeddings are never generated during SessionEnd, defeating a key purpose of the hook. A secondary concern is that the script uses system python3 instead of the project venv, which would cause embed.py (numpy) and distill.py --llm (httpx) to fail even with corrected arguments. The SessionStart and PreCompact handlers are correctly implemented (though PreCompact's distill.py --llm would also fail without venv). README hook documentation section is well-written with correct settings.json format. VAL-HOOK-004 is technically not met due to the embed.py argument error."
+}
