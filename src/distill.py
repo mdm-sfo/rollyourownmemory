@@ -722,10 +722,10 @@ def main():
                         conn.execute(
                             """INSERT INTO facts (project, fact, category, confidence, timestamp)
                                VALUES (NULL, ?, ?, 0.85, datetime('now'))""",
-                            (f"[cross-project] {p['pattern']}", p.get('category', 'pattern'))
+                            (f"[cross-project] {p.get('pattern', '')}", p.get('category', 'pattern'))
                         )
                         promoted += 1
-                    except sqlite3.IntegrityError:
+                    except (sqlite3.IntegrityError, KeyError):
                         pass
                 conn.commit()
                 print(f"\nPromoted {promoted} patterns to global facts.")

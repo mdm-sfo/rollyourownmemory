@@ -450,6 +450,14 @@ def memory_resume_context(project: Optional[str] = None, session_id: Optional[st
 
     # Find the target session
     if session_id:
+        # Verify the session exists before trying to resume
+        exists = conn.execute(
+            "SELECT 1 FROM messages WHERE session_id = ? LIMIT 1",
+            (session_id,)
+        ).fetchone()
+        if not exists:
+            conn.close()
+            return f"Session {session_id} not found"
         target_session = session_id
     else:
         sql = "SELECT DISTINCT session_id, MAX(timestamp) as last_ts FROM messages WHERE session_id IS NOT NULL"
@@ -601,6 +609,7 @@ def memory_feedback(fact_id: int, feedback: str, correction: Optional[str] = Non
                 session_id=fact["session_id"],
                 source_message_id=fact["source_message_id"],
                 compressed_details=f"corrected from: {old_fact_text[:200]}",
+                timestamp=datetime.now(timezone.utc).isoformat(),
             )
             result_parts.append(f"Inserted corrected fact: {correction}")
         except sqlite3.IntegrityError:
