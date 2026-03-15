@@ -481,6 +481,98 @@ def dedup_facts(db_path: Optional[str] = None, threshold: float = 0.85) -> int:
     return len(to_delete)
 
 
+def detect_cross_project_patterns(conn: sqlite3.Connection, model: Optional[str] = None,
+                                   min_projects: int = 3) -> list[dict]:
+    """Find facts that repeat across multiple projects and promote to global patterns.
+
+    Groups facts by project, sends the summary to a local LLM for cross-project
+    analysis, and returns a list of pattern dicts.
+
+    Args:
+        conn: SQLite database connection.
+        model: LLM model name (default: llama3.3:70b).
+        min_projects: Minimum number of projects required for pattern detection.
+    """
+    try:
+        import httpx
+    except ImportError:
+        print("httpx required for pattern detection: pip install httpx", file=sys.stderr)
+        return []
+
+    # Get all facts grouped by project
+    rows = conn.execute("""
+        SELECT project, fact, category, confidence, id
+        FROM facts
+        WHERE confidence > 0 AND project IS NOT NULL
+        ORDER BY project, category
+    """).fetchall()
+
+    if not rows:
+        print("No project-specific facts to analyze.")
+        return []
+
+    # Group facts by project
+    projects: dict[str, list[dict]] = {}
+    for r in rows:
+        proj = r["project"]
+        if proj not in projects:
+            projects[proj] = []
+        projects[proj].append({"fact": r["fact"], "category": r["category"], "id": r["id"]})
+
+    if len(projects) < min_projects:
+        print(f"Only {len(projects)} projects found, need {min_projects}+ for pattern detection.")
+        return []
+
+    # Build a summary for the LLM
+    summary_parts = []
+    for proj, facts in projects.items():
+        proj_name = proj.split("/")[-1] if proj else "unknown"
+        fact_text = "\n".join(f"  - [{f['category']}] {f['fact']}" for f in facts[:20])
+        summary_parts.append(f"Project: {proj_name}\n{fact_text}")
+
+    summary = "\n\n".join(summary_parts)
+
+    model_name = model or "llama3.3:70b"
+
+    prompt = f"""Analyze these facts from {len(projects)} different projects. Find patterns that repeat across 3 or more projects — these represent the user's global preferences, habits, or architectural style.
+
+Facts by project:
+{summary[:16000]}
+
+For each cross-project pattern you find, return a JSON object with:
+- "pattern": a concise description of the cross-project pattern
+- "category": the most appropriate fact category (preference, decision, pattern, tool)
+- "evidence": list of project names where this pattern appears
+- "source_fact_ids": list of fact IDs that support this pattern
+
+Return a JSON array. If no clear cross-project patterns exist, return [].
+
+Return ONLY a JSON array, no other text."""
+
+    try:
+        resp = httpx.post(
+            "http://localhost:11434/v1/chat/completions",
+            json={
+                "model": model_name,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.1,
+            },
+            timeout=180,
+        )
+        resp.raise_for_status()
+        content = resp.json()["choices"][0]["message"]["content"]
+
+        # Parse JSON from response
+        match = re.search(r'\[.*\]', content, re.DOTALL)
+        if match:
+            patterns = json.loads(match.group())
+            return patterns
+    except Exception as e:
+        print(f"Pattern detection failed: {e}", file=sys.stderr)
+
+    return []
+
+
 def distill(use_llm=False, api_base=None, limit=None, model: str = "llama3.3:70b"):
     conn = get_conn(str(DB_PATH))
     sessions = get_undistilled_sessions(conn)
@@ -557,6 +649,13 @@ def main():
     dedup.add_argument("--threshold", type=float, default=0.85,
                        help="Cosine similarity threshold (default: 0.85)")
 
+    patterns_cmd = sub.add_parser("patterns", help="Detect cross-project patterns")
+    patterns_cmd.add_argument("--model", help="LLM model name (default: llama3.3:70b)")
+    patterns_cmd.add_argument("--min-projects", type=int, default=3,
+                              help="Minimum projects for pattern detection (default: 3)")
+    patterns_cmd.add_argument("--promote", action="store_true",
+                              help="Auto-promote detected patterns to global facts")
+
     stats = sub.add_parser("stats", help="Show distillation statistics")
 
     args = parser.parse_args()
@@ -605,6 +704,34 @@ def main():
 
     elif args.command == "dedup":
         dedup_facts(threshold=args.threshold)
+    elif args.command == "patterns":
+        conn = get_conn(str(DB_PATH))
+        patterns = detect_cross_project_patterns(conn, model=args.model,
+                                                 min_projects=args.min_projects)
+        if patterns:
+            print(f"\nDetected {len(patterns)} cross-project patterns:\n")
+            for i, p in enumerate(patterns, 1):
+                print(f"{i}. [{p.get('category', '?')}] {p.get('pattern', '?')}")
+                evidence = p.get('evidence', [])
+                print(f"   Found in: {', '.join(evidence)}")
+
+            if args.promote:
+                promoted = 0
+                for p in patterns:
+                    try:
+                        conn.execute(
+                            """INSERT INTO facts (project, fact, category, confidence, timestamp)
+                               VALUES (NULL, ?, ?, 0.85, datetime('now'))""",
+                            (f"[cross-project] {p['pattern']}", p.get('category', 'pattern'))
+                        )
+                        promoted += 1
+                    except sqlite3.IntegrityError:
+                        pass
+                conn.commit()
+                print(f"\nPromoted {promoted} patterns to global facts.")
+        else:
+            print("No cross-project patterns detected.")
+        conn.close()
     elif args.command == "stats":
         conn = get_conn(str(DB_PATH))
         total_sessions = conn.execute("SELECT COUNT(DISTINCT session_id) FROM messages").fetchone()[0]
