@@ -1,0 +1,101 @@
+{
+  "groupId": "dedup",
+  "testedAt": "2026-03-15T00:00:00Z",
+  "isolation": {
+    "workingDirectory": "/home/matthewmurray/claude-memory",
+    "pythonExecutable": ".venv/bin/python",
+    "readOnly": true,
+    "database": "code inspection only (no DB modifications)"
+  },
+  "toolsUsed": ["Execute", "Read"],
+  "assertions": [
+    {
+      "id": "VAL-DEDUP-001",
+      "title": "Near-duplicates skipped on insertion",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Code inspection of store_facts() in src/distill.py (lines 273-318)",
+          "expected": "Function checks cosine similarity >0.85 before insertion and skips duplicates",
+          "observed": "store_facts() calls _load_existing_fact_embeddings() to load all existing facts, then for each candidate calls _compute_embedding() and _is_near_duplicate() with threshold=0.85. If _is_near_duplicate returns a match index (similarity >0.85), the fact is skipped via 'continue' (line 295). Non-duplicates are inserted and appended to the existing embeddings matrix for subsequent checks."
+        },
+        {
+          "action": "Code inspection of _is_near_duplicate() in src/distill.py (lines 256-270)",
+          "expected": "Function computes cosine similarities and returns index if >threshold",
+          "observed": "_is_near_duplicate() takes candidate_vec, existing_embeddings, and threshold=0.85. It computes similarities via matrix dot product (embeddings @ candidate_vec), finds argmax, and returns the index if similarity > threshold, else None."
+        },
+        {
+          "action": "Code inspection of _compute_embedding() in src/distill.py (lines 228-233)",
+          "expected": "Function computes normalized embedding for a fact text",
+          "observed": "_compute_embedding() uses the sentence-transformer model (via _get_dedup_model()) to encode text with normalize_embeddings=True, returning a float32 vector. Normalized embeddings ensure dot product = cosine similarity."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (code inspection)",
+        "codeFiles": ["features/dedup/VAL-DEDUP-001-store-facts-code.txt"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DEDUP-002",
+      "title": "Dedup logged to stderr",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Code inspection of store_facts() skip logging (lines 288-293)",
+          "expected": "print(..., file=sys.stderr) call when a duplicate is found",
+          "observed": "When dup_idx is not None, the code prints: 'Skipping near-duplicate fact (similarity >0.85): '<candidate[:80]>...' ~ existing fact id=<id>: '<existing[:80]>...'' with file=sys.stderr"
+        },
+        {
+          "action": "Code inspection of aggregate skip count logging (line 316-317)",
+          "expected": "Summary message for total skipped count to stderr",
+          "observed": "After the loop, if skipped > 0, prints 'Dedup: {skipped} near-duplicate fact(s) skipped.' to file=sys.stderr"
+        },
+        {
+          "action": "Grep for all file=sys.stderr in distill.py",
+          "expected": "Multiple stderr print calls including dedup-related ones",
+          "observed": "Found 4 occurrences: line 127 (httpx missing), line 194 (LLM fail), line 292 (individual dup skip), line 317 (aggregate skip count). Lines 292 and 317 are the dedup-specific ones."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (code inspection)",
+        "codeFiles": ["features/dedup/VAL-DEDUP-002-stderr-logging.txt"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DEDUP-003",
+      "title": "Standalone dedup subcommand",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run python src/distill.py dedup --help",
+          "expected": "Help output showing the dedup subcommand with --threshold option",
+          "observed": "Output: 'usage: distill.py dedup [-h] [--threshold THRESHOLD]' with options for -h/--help and --threshold (default: 0.85). Exit code 0."
+        },
+        {
+          "action": "Code inspection of dedup_facts() function (lines 321-412)",
+          "expected": "Function that scans facts, clusters by similarity, keeps highest-confidence, deletes rest, prints report",
+          "observed": "dedup_facts() loads all facts with confidence > 0, computes embeddings, builds a similarity matrix, uses Union-Find to cluster facts with similarity > threshold. For each cluster with 2+ members, keeps the one with highest confidence (lowest id on tie), deletes the rest. Prints a detailed report showing KEEP/DEL per cluster and total removed count."
+        },
+        {
+          "action": "Code inspection of argparse wiring for dedup subcommand (main function)",
+          "expected": "dedup subparser connected to dedup_facts()",
+          "observed": "In main(), 'dedup' subparser is created with --threshold argument (default 0.85). When args.command == 'dedup', dedup_facts(threshold=args.threshold) is called."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (CLI help output)",
+        "terminalOutput": "features/dedup/VAL-DEDUP-003-dedup-help.txt",
+        "codeFiles": ["features/dedup/VAL-DEDUP-003-dedup-facts-code.txt"]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 3 assertions: 3 passed. VAL-DEDUP-001 confirmed store_facts() skips near-duplicates with >0.85 cosine similarity. VAL-DEDUP-002 confirmed skip messages are printed to sys.stderr. VAL-DEDUP-003 confirmed the dedup subcommand exists with --threshold flag and implements cluster-based dedup with removal report."
+}

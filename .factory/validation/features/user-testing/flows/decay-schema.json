@@ -1,0 +1,147 @@
+{
+  "groupId": "decay-schema",
+  "testedAt": "2026-03-15T12:00:00Z",
+  "isolation": {
+    "workingDirectory": "/home/matthewmurray/claude-memory",
+    "pythonExecutable": ".venv/bin/python",
+    "readOnly": true,
+    "database": "in-memory SQLite (:memory:)",
+    "schemaFile": "schema.sql",
+    "sourceModules": ["src/memory_db.py", "src/inject.py", "src/curate.py", "src/mcp_server.py"]
+  },
+  "toolsUsed": ["Execute", "Read"],
+  "assertions": [
+    {
+      "id": "VAL-DECAY-001",
+      "title": "last_validated column exists",
+      "status": "pass",
+      "steps": [
+        { "action": "Create in-memory DB from schema.sql", "expected": "DB created without errors", "observed": "DB created successfully" },
+        { "action": "Run migrate_schema(conn)", "expected": "Migration completes without errors", "observed": "Migration completed successfully" },
+        { "action": "Execute PRAGMA table_info(facts)", "expected": "last_validated column present", "observed": "last_validated TEXT column found at index 8" }
+      ],
+      "evidence": {
+        "terminalOutput": "features/decay-schema/VAL-DECAY-001-pragma-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DECAY-002",
+      "title": "Migration is idempotent",
+      "status": "pass",
+      "steps": [
+        { "action": "Create in-memory DB from schema.sql", "expected": "DB created", "observed": "DB created successfully" },
+        { "action": "Call migrate_schema() 3 times", "expected": "All calls succeed without errors", "observed": "All 3 calls returned SUCCESS" }
+      ],
+      "evidence": {
+        "terminalOutput": "features/decay-schema/VAL-DECAY-002-idempotent-migration.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DECAY-003",
+      "title": "Time-based confidence penalty in inject.py",
+      "status": "pass",
+      "steps": [
+        { "action": "Read src/inject.py generate_memory_context()", "expected": "Decay calculation present", "observed": "Decay code found: -0.2 per 90-day period, min 0.1" },
+        { "action": "Verify SQL fetches last_validated", "expected": "SELECT includes last_validated", "observed": "SQL selects last_validated and timestamp from facts" },
+        { "action": "Verify decay formula", "expected": "max(0.1, conf - 0.2 * periods) where periods = days_old // 90", "observed": "Exact formula: effective_conf = max(0.1, effective_conf - 0.2 * periods) with periods = days_old // 90, triggered when days_old > 90" },
+        { "action": "Verify reference time uses last_validated with fallback", "expected": "ref_time = last_validated or timestamp", "observed": "ref_time = r['last_validated'] or r['timestamp']" }
+      ],
+      "evidence": {
+        "codeInspection": "features/decay-schema/VAL-DECAY-003-inject-decay-code.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DECAY-004",
+      "title": "Curate approval updates last_validated",
+      "status": "pass",
+      "steps": [
+        { "action": "Read src/curate.py review_facts()", "expected": "UPDATE sets last_validated on approval", "observed": "Found: UPDATE facts SET confidence = 1.0, last_validated = ? WHERE id = ? with now = datetime.now(timezone.utc).isoformat()" },
+        { "action": "Verify 'e' (edit) also sets last_validated", "expected": "Edit path also updates last_validated", "observed": "Found: UPDATE facts SET fact = ?, confidence = 1.0, last_validated = ? WHERE id = ?" }
+      ],
+      "evidence": {
+        "codeInspection": "features/decay-schema/VAL-DECAY-004-curate-approval.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DECAY-005",
+      "title": "MCP memory_add_fact sets last_validated",
+      "status": "pass",
+      "steps": [
+        { "action": "Read src/mcp_server.py memory_add_fact()", "expected": "last_validated set to current timestamp", "observed": "Found: now = datetime.now(timezone.utc).isoformat(); store_fact(conn, ..., last_validated=now)" },
+        { "action": "Verify store_fact() includes last_validated in INSERT", "expected": "INSERT includes last_validated column", "observed": "store_fact() INSERT statement includes last_validated as 8th parameter" }
+      ],
+      "evidence": {
+        "codeInspection": "features/decay-schema/VAL-DECAY-005-mcp-add-fact.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DECAY-006",
+      "title": "Curate import sets last_validated",
+      "status": "pass",
+      "steps": [
+        { "action": "Read src/curate.py import_facts()", "expected": "INSERT sets last_validated for imported facts", "observed": "Found: now = datetime.now(timezone.utc).isoformat() before loop, INSERT OR REPLACE INTO facts (..., last_validated) VALUES (?, ?, 1.0, NULL, ?) with now as last_validated" }
+      ],
+      "evidence": {
+        "codeInspection": "features/decay-schema/VAL-DECAY-006-curate-import.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SCHEMA-001",
+      "title": "schema.sql includes processed_messages",
+      "status": "pass",
+      "steps": [
+        { "action": "Read schema.sql", "expected": "CREATE TABLE IF NOT EXISTS processed_messages with message_id, processor, processed_at and processor index", "observed": "Found exact DDL: CREATE TABLE IF NOT EXISTS processed_messages with message_id INTEGER NOT NULL, processor TEXT NOT NULL, processed_at TEXT DEFAULT (datetime('now')), PRIMARY KEY (message_id, processor), and CREATE INDEX IF NOT EXISTS idx_processed_messages_processor ON processed_messages(processor)" }
+      ],
+      "evidence": {
+        "codeInspection": "features/decay-schema/VAL-SCHEMA-001-processed-messages.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SCHEMA-002",
+      "title": "schema.sql includes last_validated",
+      "status": "pass",
+      "steps": [
+        { "action": "Read schema.sql facts table definition", "expected": "last_validated TEXT column in CREATE TABLE facts", "observed": "Found: last_validated TEXT, -- ISO 8601 timestamp for fact decay tracking" }
+      ],
+      "evidence": {
+        "codeInspection": "features/decay-schema/VAL-SCHEMA-002-last-validated.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-003",
+      "title": "Schema migrations on fresh database",
+      "status": "pass",
+      "steps": [
+        { "action": "Create in-memory DB from schema.sql", "expected": "All tables created", "observed": "All tables created including processed_messages" },
+        { "action": "Run migrate_schema() on fresh DB", "expected": "No errors", "observed": "Migration completed without errors" },
+        { "action": "Verify facts columns", "expected": "All columns including last_validated present", "observed": "facts columns: ['id', 'session_id', 'project', 'fact', 'category', 'confidence', 'source_message_id', 'timestamp', 'last_validated', 'created_at']" },
+        { "action": "Verify processed_messages columns", "expected": "message_id, processor, processed_at", "observed": "processed_messages columns: ['message_id', 'processor', 'processed_at']" },
+        { "action": "Verify all tables present", "expected": "All expected tables", "observed": "16 tables including embeddings, entities, entity_mentions, facts, messages, processed_messages, and FTS tables" }
+      ],
+      "evidence": {
+        "terminalOutput": "features/decay-schema/VAL-CROSS-003-fresh-db-schema.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 9 assertions: 9 passed, 0 failed. All decay/schema features verified — last_validated column exists in schema.sql and via migration, decay calculation in inject.py applies -0.2/90d penalty (min 0.1), curate/MCP/import all set last_validated, processed_messages DDL is complete, and fresh DB + migration paths produce identical schemas."
+}

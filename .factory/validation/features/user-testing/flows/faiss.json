@@ -1,0 +1,132 @@
+{
+  "groupId": "faiss",
+  "testedAt": "2026-03-15T00:00:00Z",
+  "isolation": {
+    "workingDirectory": "/home/matthewmurray/claude-memory",
+    "pythonExecutable": ".venv/bin/python",
+    "readOnly": true,
+    "database": "in-memory SQLite (:memory:) and temp files",
+    "sourceModules": ["src/embed.py", "src/memory_db.py"]
+  },
+  "toolsUsed": ["Execute"],
+  "assertions": [
+    {
+      "id": "VAL-FAISS-001",
+      "title": "FAISS index file created",
+      "status": "pass",
+      "steps": [
+        { "action": "Create temp directory with fresh SQLite DB from schema.sql", "expected": "DB initialized with schema", "observed": "DB created and schema applied" },
+        { "action": "Insert 3 test messages and generate fake 384-dim normalized embeddings", "expected": "Messages and embeddings stored in DB", "observed": "3 messages and 3 embeddings stored" },
+        { "action": "Call update_faiss_index() with message IDs and vectors", "expected": "memory.faiss and memory_ids.json created", "observed": "Both files created: index 4653 bytes, ids 9 bytes" },
+        { "action": "Read back FAISS index and verify contents", "expected": "3 vectors, dim=384", "observed": "FAISS index contains 3 vectors, dim=384; IDs [1, 2, 3]" }
+      ],
+      "evidence": {
+        "terminalOutput": "features/faiss/VAL-FAISS-001-004-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FAISS-002",
+      "title": "search_similar uses FAISS",
+      "status": "pass",
+      "steps": [
+        { "action": "Inspect search_similar() source code", "expected": "Calls _search_faiss() first", "observed": "Line: results = _search_faiss(query_vec, conn, top_k, ...)" },
+        { "action": "Inspect _search_faiss() source code", "expected": "Checks index existence then loads and queries FAISS", "observed": "Checks FAISS_INDEX_PATH.exists(), loads with faiss.read_index(), queries with index.search()" },
+        { "action": "Verify fallback only when _search_faiss returns None", "expected": "Brute-force only if results is None", "observed": "if results is None: results = _search_bruteforce(...)" }
+      ],
+      "evidence": {
+        "terminalOutput": "features/faiss/VAL-FAISS-002-code-inspection.txt",
+        "codePatterns": [
+          "search_similar calls _search_faiss first",
+          "_search_faiss checks FAISS_INDEX_PATH.exists() and FAISS_IDS_PATH.exists()",
+          "Loads index with faiss.read_index(str(FAISS_INDEX_PATH))",
+          "Queries with index.search(query_vec.reshape(1, -1).astype(np.float32), fetch_k)",
+          "Falls back to _search_bruteforce only when _search_faiss returns None"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FAISS-003",
+      "title": "Brute-force fallback",
+      "status": "pass",
+      "steps": [
+        { "action": "Inspect search_similar() fallback logic", "expected": "Falls back to brute-force when FAISS unavailable", "observed": "if results is None: results = _search_bruteforce(...)" },
+        { "action": "Inspect _search_bruteforce() implementation", "expected": "Uses numpy dot product", "observed": "similarities = embeddings_matrix @ query_vec; np.argsort(similarities)[::-1][:top_k]" },
+        { "action": "Inspect _search_faiss() return None conditions", "expected": "Returns None when faiss not installed or index missing", "observed": "Returns None when: _get_faiss() is None, index files don't exist, index.ntotal == 0, or load fails" }
+      ],
+      "evidence": {
+        "terminalOutput": "features/faiss/VAL-FAISS-003-code-inspection.txt",
+        "codePatterns": [
+          "_search_faiss returns None when faiss module unavailable",
+          "_search_faiss returns None when FAISS_INDEX_PATH or FAISS_IDS_PATH don't exist",
+          "search_similar checks: if results is None: results = _search_bruteforce(...)",
+          "_search_bruteforce uses numpy: embeddings_matrix @ query_vec"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FAISS-004",
+      "title": "rebuild_index subcommand",
+      "status": "pass",
+      "steps": [
+        { "action": "Verify rebuild_index subcommand exists in argparse", "expected": "Subcommand available", "observed": "python src/embed.py rebuild_index --help shows help output" },
+        { "action": "Create temp DB with schema, insert messages and embeddings", "expected": "Test data ready", "observed": "3 messages with 384-dim embeddings in temp DB" },
+        { "action": "Call rebuild_faiss_index() with temp DB", "expected": "FAISS index rebuilt from all embeddings", "observed": "FAISS index rebuilt: 3 vectors, dim=384" },
+        { "action": "Verify rebuilt index contents", "expected": "All 3 vectors indexed", "observed": "Index contains 3 vectors, IDs [1, 2, 3]" }
+      ],
+      "evidence": {
+        "terminalOutput": ["features/faiss/VAL-FAISS-001-004-output.txt", "features/faiss/VAL-FAISS-004-subcommand-help.txt"],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FAISS-005",
+      "title": "Temporal decay as post-retrieval reranking",
+      "status": "pass",
+      "steps": [
+        { "action": "Inspect _search_faiss() fetch_k calculation", "expected": "Retrieves top_k * 3 results", "observed": "fetch_k = min(top_k * 3, index.ntotal)" },
+        { "action": "Inspect _apply_temporal_decay() implementation", "expected": "Blends similarity with recency", "observed": "score = 0.7 * similarity + 0.3 * decay; decay = 0.5 ** (age_days / halflife)" },
+        { "action": "Inspect search_similar() post-retrieval reranking", "expected": "Applies decay then re-sorts and truncates", "observed": "results = _apply_temporal_decay(...); results.sort(...); results = results[:top_k]" }
+      ],
+      "evidence": {
+        "terminalOutput": "features/faiss/VAL-FAISS-005-code-inspection.txt",
+        "codePatterns": [
+          "_search_faiss: fetch_k = min(top_k * 3, index.ntotal) — over-fetches 3x for reranking",
+          "_apply_temporal_decay: score = 0.7 * r['score'] + 0.3 * decay",
+          "search_similar: applies _apply_temporal_decay, sorts by score descending, truncates to top_k",
+          "Pattern confirmed: retrieve top_k*3 → apply temporal decay → return top_k"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FAISS-006",
+      "title": "Graceful when faiss-cpu not installed",
+      "status": "pass",
+      "steps": [
+        { "action": "Inspect _get_faiss() for lazy/optional import", "expected": "try/except ImportError pattern", "observed": "_get_faiss uses try: import faiss; return faiss; except ImportError: return None" },
+        { "action": "Monkeypatch _get_faiss to return None, test _search_faiss", "expected": "Returns None gracefully", "observed": "_search_faiss returns None when faiss unavailable" },
+        { "action": "Test brute-force fallback works when FAISS unavailable", "expected": "Returns results via numpy", "observed": "_search_bruteforce returns 1 result with score 1.0000" },
+        { "action": "Test update_faiss_index silently returns when faiss unavailable", "expected": "No files created, no errors", "observed": "No FAISS files created, function returned silently" },
+        { "action": "Test rebuild_faiss_index reports gracefully when faiss unavailable", "expected": "Prints message, returns 0", "observed": "Prints 'faiss-cpu is not installed' to stderr, returns 0" }
+      ],
+      "evidence": {
+        "terminalOutput": "features/faiss/VAL-FAISS-006-output.txt",
+        "codePatterns": [
+          "_get_faiss(): try: import faiss; return faiss; except ImportError: return None",
+          "All FAISS functions call _get_faiss() and handle None return gracefully",
+          "update_faiss_index: early return if faiss is None",
+          "rebuild_faiss_index: prints error message and returns 0 if faiss is None"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 6 assertions: all 6 passed. FAISS index creation (VAL-FAISS-001), FAISS-first search path (VAL-FAISS-002), brute-force fallback (VAL-FAISS-003), rebuild_index subcommand (VAL-FAISS-004), temporal decay reranking with top_k*3 over-fetch (VAL-FAISS-005), and graceful fallback when faiss-cpu not installed (VAL-FAISS-006) all verified through a combination of code inspection and functional testing with temporary databases."
+}

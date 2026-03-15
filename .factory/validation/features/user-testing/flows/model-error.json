@@ -1,0 +1,86 @@
+{
+  "groupId": "model-error",
+  "testedAt": "2026-03-15T12:00:00Z",
+  "isolation": {
+    "workingDirectory": "/home/matthewmurray/claude-memory",
+    "pythonExecutable": ".venv/bin/python",
+    "mode": "read-only",
+    "sourceModules": ["src/distill.py", "src/inject.py"],
+    "readmeFile": "README.md"
+  },
+  "toolsUsed": ["Execute", "Read"],
+  "assertions": [
+    {
+      "id": "VAL-MODEL-001",
+      "title": "--model flag with correct default",
+      "status": "pass",
+      "steps": [
+        { "action": "Run .venv/bin/python src/distill.py run --help", "expected": "--model flag listed with default llama3.3:70b", "observed": "Output shows '--model MODEL        LLM model name (default: llama3.3:70b)'" }
+      ],
+      "evidence": {
+        "terminalOutput": "features/model-error/VAL-MODEL-001-help-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MODEL-002",
+      "title": "README documents --model flag with llama3.3:70b default",
+      "status": "pass",
+      "steps": [
+        { "action": "Read README.md", "expected": "Configuration section mentions --model flag with llama3.3:70b default", "observed": "README.md has 'Configuration > LLM for Distillation' section stating 'Default: llama3.3:70b' and showing --model usage" }
+      ],
+      "evidence": {
+        "fileContent": "features/model-error/VAL-MODEL-002-readme-section.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MODEL-003",
+      "title": "--model value used in API call",
+      "status": "pass",
+      "steps": [
+        { "action": "Inspect src/distill.py argparse definition", "expected": "--model argument defined with default llama3.3:70b", "observed": "run.add_argument('--model', default='llama3.3:70b', ...)" },
+        { "action": "Trace model parameter from main() to distill()", "expected": "args.model passed to distill()", "observed": "distill(..., model=args.model)" },
+        { "action": "Trace model parameter from distill() to extract_facts_llm()", "expected": "model passed through", "observed": "extract_facts_llm(messages, api_base, model=model)" },
+        { "action": "Inspect httpx.post() call in extract_facts_llm()", "expected": "model parameter used in JSON body instead of hardcoded string", "observed": "json={'model': model, ...} — fully parameterized" }
+      ],
+      "evidence": {
+        "codeInspection": "features/model-error/VAL-MODEL-003-code-inspection.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ERR-001",
+      "title": "inject.py logs errors to stderr",
+      "status": "pass",
+      "steps": [
+        { "action": "Inspect src/inject.py for sqlite3.OperationalError handlers", "expected": "print(f'Warning: {e}', file=sys.stderr) pattern found", "observed": "Found 4 instances of 'except sqlite3.OperationalError as e: print(f\"Warning: {e}\", file=sys.stderr)' in generate_memory_context()" }
+      ],
+      "evidence": {
+        "codeInspection": "features/model-error/VAL-ERR-001-code-inspection.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ERR-002",
+      "title": "inject.py does not crash on errors",
+      "status": "pass",
+      "steps": [
+        { "action": "Inspect src/inject.py exception handlers for re-raise", "expected": "Exceptions caught without re-raising; execution continues", "observed": "All 4 except blocks print to stderr then fall through to next section. No raise, no sys.exit(1). Function returns output normally after all sections." },
+        { "action": "Verify graceful degradation path", "expected": "Script returns output even if all DB queries fail", "observed": "If all sections fail, returns 'No memory data available yet.' and exits with code 0" }
+      ],
+      "evidence": {
+        "codeInspection": "features/model-error/VAL-ERR-002-code-inspection.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 5 assertions: 5 passed, 0 failed. VAL-MODEL-001 confirmed via CLI --help output. VAL-MODEL-002 confirmed via README.md Configuration section. VAL-MODEL-003 confirmed via code tracing from argparse through distill() to httpx.post(). VAL-ERR-001 confirmed 4 instances of stderr logging pattern. VAL-ERR-002 confirmed exceptions are caught without re-raise, allowing graceful degradation."
+}

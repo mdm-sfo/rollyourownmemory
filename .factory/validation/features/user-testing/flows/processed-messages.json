@@ -1,0 +1,165 @@
+{
+  "groupId": "processed-messages",
+  "testedAt": "2026-03-15T00:00:00Z",
+  "isolation": {
+    "workingDirectory": "/home/matthewmurray/claude-memory",
+    "pythonExecutable": ".venv/bin/python",
+    "databaseMode": "in-memory SQLite (:memory:)",
+    "readOnly": true
+  },
+  "toolsUsed": ["Execute", "Read"],
+  "assertions": [
+    {
+      "id": "VAL-PROC-001",
+      "title": "processed_messages table exists",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Load schema.sql into in-memory SQLite",
+          "expected": "Schema loads without errors",
+          "observed": "Schema loaded successfully"
+        },
+        {
+          "action": "Query sqlite_master for processed_messages table DDL",
+          "expected": "CREATE TABLE with message_id, processor, processed_at columns",
+          "observed": "CREATE TABLE processed_messages (message_id INTEGER NOT NULL REFERENCES messages(id), processor TEXT NOT NULL, processed_at TEXT DEFAULT (datetime('now')), PRIMARY KEY (message_id, processor))"
+        },
+        {
+          "action": "Query PRAGMA table_info(processed_messages)",
+          "expected": "Three columns: message_id, processor, processed_at",
+          "observed": "Three columns confirmed: message_id (INTEGER, NOT NULL, PK1), processor (TEXT, NOT NULL, PK2), processed_at (TEXT)"
+        },
+        {
+          "action": "Query sqlite_master for indexes on processed_messages",
+          "expected": "Index on processor column",
+          "observed": "CREATE INDEX idx_processed_messages_processor ON processed_messages(processor)"
+        },
+        {
+          "action": "Verify migrate_schema() also creates the table",
+          "expected": "migrate_schema creates table and index via CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS",
+          "observed": "migrate_schema() confirmed to create both table and index. Code inspection verified."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "terminalOutput": "features/processed-messages/VAL-PROC-001-schema.txt",
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PROC-002",
+      "title": "entities.py uses processed_messages",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read src/entities.py and locate get_unprocessed_messages()",
+          "expected": "Query uses processed_messages WHERE processor='entities'",
+          "observed": "Function uses: SELECT ... FROM messages m WHERE m.role = 'user' AND m.id NOT IN (SELECT message_id FROM processed_messages WHERE processor = 'entities')"
+        },
+        {
+          "action": "Verify no reference to entity_mentions for determining unprocessed state",
+          "expected": "No entity_mentions check in get_unprocessed_messages",
+          "observed": "Confirmed: get_unprocessed_messages uses only processed_messages table, not entity_mentions"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "terminalOutput": "features/processed-messages/VAL-PROC-002-entities-query.txt",
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PROC-003",
+      "title": "Sentinel cleanup",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read src/memory_db.py and locate Migration 3 in migrate_schema()",
+          "expected": "DELETE FROM entity_mentions WHERE entity_id = 0 in migration",
+          "observed": "Migration 3 checks sentinel_count = conn.execute('SELECT COUNT(*) FROM entity_mentions WHERE entity_id = 0').fetchone()[0], then if sentinel_count > 0: conn.execute('DELETE FROM entity_mentions WHERE entity_id = 0')"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "terminalOutput": "features/processed-messages/VAL-PROC-003-sentinel-cleanup.txt",
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PROC-004",
+      "title": "embed.py uses processed_messages",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read src/embed.py and locate get_unembedded_messages()",
+          "expected": "Query uses processed_messages WHERE processor='embeddings'",
+          "observed": "Function uses: SELECT m.id, m.content FROM messages m WHERE m.id NOT IN (SELECT message_id FROM processed_messages WHERE processor = 'embeddings')"
+        },
+        {
+          "action": "Verify no LEFT JOIN on embeddings for determining unembedded state",
+          "expected": "No LEFT JOIN on embeddings in get_unembedded_messages",
+          "observed": "Confirmed: get_unembedded_messages uses only processed_messages table, not a LEFT JOIN on embeddings"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "terminalOutput": "features/processed-messages/VAL-PROC-004-embed-query.txt",
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PROC-005",
+      "title": "entities.py marks messages as processed",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read src/entities.py extract_all() function",
+          "expected": "INSERT into processed_messages with processor='entities' after entity extraction",
+          "observed": "After entity extraction loop: conn.execute('INSERT OR IGNORE INTO processed_messages (message_id, processor) VALUES (?, \\'entities\\')', (msg_id,))"
+        },
+        {
+          "action": "Verify no entity_id=0 sentinel insertion",
+          "expected": "No INSERT with entity_id=0",
+          "observed": "Confirmed: no entity_id=0 sentinel insertion anywhere in entities.py"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "terminalOutput": "features/processed-messages/VAL-PROC-005-entities-insert.txt",
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PROC-006",
+      "title": "embed.py marks messages as processed",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read src/embed.py embed_messages() function",
+          "expected": "INSERT into processed_messages with processor='embeddings' after embedding",
+          "observed": "After store_embeddings: conn.executemany('INSERT OR IGNORE INTO processed_messages (message_id, processor) VALUES (?, \\'embeddings\\')', [(mid,) for mid in ids])"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "terminalOutput": "features/processed-messages/VAL-PROC-006-embed-insert.txt",
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 6 assertions: 6 passed, 0 failed. All processed_messages patterns verified via runtime schema check (VAL-PROC-001) and code inspection (VAL-PROC-002 through VAL-PROC-006)."
+}
