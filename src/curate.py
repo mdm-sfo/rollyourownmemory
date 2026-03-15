@@ -84,7 +84,7 @@ def review_facts(min_confidence=0.0, max_confidence=0.89, limit=20, category=Non
                 if new_text:
                     now = datetime.now(timezone.utc).isoformat()
                     conn.execute("UPDATE facts SET fact = ?, confidence = 1.0, last_validated = ? WHERE id = ?",
-                                 (now, new_text, r["id"]))
+                                 (new_text, now, r["id"]))
                     conn.commit()
                     edited += 1
                     print("  -> Edited & approved\n")
@@ -122,9 +122,10 @@ def add_fact_interactive():
     project = input("  Project (or Enter for general): ").strip() or None
 
     conn = get_conn(str(DB_PATH))
+    now = datetime.now(timezone.utc).isoformat()
     conn.execute(
-        "INSERT INTO facts (fact, category, confidence, project) VALUES (?, ?, 1.0, ?)",
-        (fact, category, project),
+        "INSERT INTO facts (fact, category, confidence, project, last_validated) VALUES (?, ?, 1.0, ?, ?)",
+        (fact, category, project, now),
     )
     conn.commit()
     conn.close()

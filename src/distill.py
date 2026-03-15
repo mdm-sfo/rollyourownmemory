@@ -428,7 +428,7 @@ def distill(use_llm=False, api_base=None, limit=None, model: str = "llama3.3:70b
     total_facts = 0
 
     for (session_id,) in sessions:
-        messages = get_session_messages(conn, session_id)
+        messages = get_session_messages(conn, session_id, limit=10000)
         if len(messages) < 2:
             # Store a sentinel so we don't re-check empty sessions
             conn.execute(

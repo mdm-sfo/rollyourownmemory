@@ -71,9 +71,16 @@ def update_faiss_index(message_ids: list[int], vectors: np.ndarray,
     id_path = ids_path or FAISS_IDS_PATH
 
     if idx_path.exists() and id_path.exists():
-        index = faiss.read_index(str(idx_path))
-        with open(id_path, "r") as f:
-            id_map = json.load(f)
+        try:
+            index = faiss.read_index(str(idx_path))
+            with open(id_path, "r") as f:
+                id_map = json.load(f)
+        except Exception as e:
+            print(f"Warning: failed to load FAISS index, creating new: {e}",
+                  file=sys.stderr)
+            dim = vectors.shape[1]
+            index = faiss.IndexFlatIP(dim)
+            id_map = []
     else:
         dim = vectors.shape[1]
         index = faiss.IndexFlatIP(dim)
@@ -204,9 +211,14 @@ def _search_faiss(query_vec: np.ndarray, conn: sqlite3.Connection,
     if not FAISS_INDEX_PATH.exists() or not FAISS_IDS_PATH.exists():
         return None
 
-    index = faiss.read_index(str(FAISS_INDEX_PATH))
-    with open(FAISS_IDS_PATH, "r") as f:
-        id_map = json.load(f)
+    try:
+        index = faiss.read_index(str(FAISS_INDEX_PATH))
+        with open(FAISS_IDS_PATH, "r") as f:
+            id_map = json.load(f)
+    except Exception as e:
+        print(f"Warning: failed to load FAISS index, falling back to brute-force: {e}",
+              file=sys.stderr)
+        return None
 
     if index.ntotal == 0:
         return None
