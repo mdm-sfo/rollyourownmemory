@@ -1,0 +1,7 @@
+commands:
+  install: cd /home/matthewmurray/claude-memory && .venv/bin/pip install -e ".[all,dev]"
+  test: cd /home/matthewmurray/claude-memory && .venv/bin/python -m pytest tests/ -v
+  typecheck: echo "No typecheck configured (no mypy/pyright in project)"
+  lint: echo "No linter configured"
+
+services: {}
