@@ -1,0 +1,39 @@
+{
+  "featureId": "cross-project-patterns",
+  "reviewedAt": "2026-03-15T14:30:00.000Z",
+  "commitId": "cbe4a669bc8519098b6a1c2f7d68327188e3c706",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation is solid and meets all requirements. detect_cross_project_patterns() has correct signature with type hints. patterns subcommand has --model, --min-projects, --promote flags. Uses get_conn() exclusively (no _connect()). Default model resolves to llama3.3:70b. Handles <3 projects and empty facts gracefully. Code follows project conventions (functions over classes, lazy httpx import, argparse subcommands, stderr error output). Two minor non-blocking issues found.",
+    "issues": [
+      {
+        "file": "src/distill.py",
+        "line": 726,
+        "severity": "non_blocking",
+        "description": "In the --promote path, p['pattern'] is accessed with direct dict key lookup (line 726: f\"[cross-project] {p['pattern']}\") which could raise KeyError if the LLM returns a malformed dict without a 'pattern' key. The display path safely uses p.get('pattern', '?') but the promote INSERT does not. The surrounding try/except only catches sqlite3.IntegrityError, not KeyError. If a malformed pattern object appears mid-loop, prior uncommitted inserts would also be lost since conn.commit() is after the loop. Consider using p.get('pattern', '') or adding KeyError to the except clause."
+      },
+      {
+        "file": "src/distill.py",
+        "line": 484,
+        "severity": "non_blocking",
+        "description": "Minor: continuation line alignment in function signature — min_projects parameter is indented with extra space relative to conn parameter. This is cosmetic and doesn't affect functionality, but PEP 8 recommends consistent alignment of continuation parameters."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The worker correctly followed all AGENTS.md conventions: functions over classes, type hints, lazy imports for httpx, get_conn() for DB access, argparse subcommands. No convention gaps identified.",
+      "evidence": "src/distill.py lines 484-577 (function) and lines 655-661 (subcommand) and lines 706-734 (handler) all follow established patterns from existing code."
+    },
+    {
+      "area": "skills",
+      "observation": "Worker followed the python-worker skill procedure correctly: read affected files, understood existing patterns, made surgical edits (127 lines added), ran all verification steps (syntax check, tests, --help, grep for _connect). No tests were added, but handoff correctly notes the feature is LLM-dependent. skillFeedback.followedProcedure is true with no deviations.",
+      "evidence": "Transcript skeleton shows: read distill.py, read mission/AGENTS files, ran baseline tests (26 pass), implemented feature, verified with 5 commands, committed with exact message."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature cross-project-patterns passes review. The implementation correctly adds detect_cross_project_patterns(conn, model=None, min_projects=3) and the 'patterns' subcommand with --model, --min-projects, --promote flags. All 7 checklist items verified: correct function signature, subcommand with flags, --promote inserts global facts (project=NULL, confidence=0.85), uses get_conn(), default model llama3.3:70b, graceful <3 projects handling, follows project conventions. Two non-blocking issues: potential KeyError in promote path with malformed LLM output, and minor alignment in function signature."
+}

@@ -1,0 +1,34 @@
+{
+  "featureId": "mcp-feedback-tool",
+  "reviewedAt": "2026-03-15T14:30:00.000Z",
+  "commitId": "1132c0e",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The implementation correctly adds memory_feedback as an @mcp.tool() with proper confidence adjustments (correct +0.05, helpful +0.03, wrong -0.5, outdated -0.3, irrelevant -0.15), clamping to [0.0, 1.0], corrected fact insertion (confidence 0.9 with compressed_details referencing the original), and unknown feedback type validation. memory_db.store_fact() now accepts optional compressed_details parameter. distill.py null-safety is fixed in both locations (lines 210 and 372) using (f.get('compressed_details') or '')[:500]. All requirements from the feature description and validation contract items VAL-MCP-010 through VAL-MCP-012, VAL-MCP-017, and VAL-CROSS-003 are satisfied.",
+    "issues": [
+      {
+        "file": "src/mcp_server.py",
+        "line": 598,
+        "severity": "non_blocking",
+        "description": "The corrected fact inserted via store_fact() does not pass a timestamp parameter, so the corrected fact will have a NULL timestamp. This means it won't appear in time-filtered queries (e.g. memory_search with 'since' parameter). Consider passing datetime.now(timezone.utc).isoformat() or inheriting the original fact's timestamp."
+      },
+      {
+        "file": "src/mcp_server.py",
+        "line": 571,
+        "severity": "non_blocking",
+        "description": "No try/finally around connection cleanup — if an unexpected exception occurs between get_conn() and conn.close(), the connection leaks. However, this matches the existing pattern used by all other tools in this file (e.g. memory_search at line 54, memory_add_fact at line 179), so this is a pre-existing convention, not a regression introduced by this feature."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "All MCP tool functions in mcp_server.py use a pattern of conn = get_conn() followed by conn.close() without try/finally protection. This is consistent across the codebase but means any unexpected exception leaks a connection. AGENTS.md documents 'All DB connections through memory_db.get_conn()' but doesn't mention cleanup patterns. This is a pre-existing gap, not introduced by this feature.",
+      "evidence": "mcp_server.py lines 54-62 (memory_search), 119-121 (memory_semantic_search), 571-610 (memory_feedback) all follow the same pattern without try/finally."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The memory_feedback tool implementation is correct and complete. All 8 review checklist items are satisfied: (1) @mcp.tool() decorator present, (2) confidence adjustments match spec exactly, (3) clamping to [0.0, 1.0] via max/min, (4) corrected fact insertion with confidence 0.9 and compressed_details, (5) error returned for unknown feedback types, (6) store_fact() accepts optional compressed_details, (7) null-safety fix applied in both distill.py locations, (8) code follows project conventions (functions over classes, type hints, get_conn() pattern). Two non-blocking issues noted: missing timestamp on corrected facts and no try/finally for connection cleanup (pre-existing pattern)."
+}

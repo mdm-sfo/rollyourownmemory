@@ -1,0 +1,40 @@
+{
+  "featureId": "mcp-resume-context",
+  "reviewedAt": "2026-03-15T14:30:00Z",
+  "commitId": "4eecbca",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The memory_resume_context tool is correctly implemented with @mcp.tool() decorator, proper type hints (Optional[str] for both parameters), and returns all required data: session metadata (project, session ID, time range), last 5 user messages, facts with compressed_details handling, entities from the session, and recent facts from other sessions. The no-sessions case returns a clear, helpful message with project filter context. Code follows project conventions (functions over classes, type hints, get_conn() for DB access, try/except for compressed_details). All three validation assertions (VAL-MCP-008, VAL-MCP-009, VAL-MCP-018) are fulfilled.",
+    "issues": [
+      {
+        "file": "src/mcp_server.py",
+        "line": 448,
+        "severity": "non_blocking",
+        "description": "When session_id is explicitly provided but doesn't exist in the database, the function returns a nearly empty '## Resume Context' response with no sections, rather than a 'session not found' message. The no-sessions check only applies when session_id is not provided. A user passing an invalid session_id would get a confusing empty response."
+      },
+      {
+        "file": "src/mcp_server.py",
+        "line": 453,
+        "severity": "non_blocking",
+        "description": "Minor: SELECT DISTINCT is redundant with GROUP BY session_id — the GROUP BY already ensures unique session_ids. Not a bug, just unnecessary."
+      },
+      {
+        "file": "src/mcp_server.py",
+        "line": 438,
+        "severity": "non_blocking",
+        "description": "No unit tests were added for this new tool. The worker skill procedure says 'Write Tests First (when applicable)' — a basic test verifying graceful handling of an empty database and the function signature would improve confidence. The existing 26 tests pass but none cover this tool."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Worker added a new MCP tool without any corresponding test. AGENTS.md and the python-worker skill mention testing but don't specify whether MCP tools specifically require tests. All existing MCP tools also lack dedicated unit tests, so this is consistent with the current pattern, but it means the test coverage gap is growing.",
+      "evidence": "Handoff says 'No new tests added'. tests/ directory has 26 tests but grep for '@mcp.tool' in test files returns zero matches — no MCP tool is individually tested."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The memory_resume_context tool is correctly implemented and fulfills VAL-MCP-008, VAL-MCP-009, and VAL-MCP-018. It has the correct @mcp.tool() decorator, proper signature with Optional[str] parameters, returns session metadata + user messages (up to 5) + facts with compressed_details + entities + recent cross-session facts, and handles no-sessions gracefully with a helpful message. Three non-blocking issues noted: (1) no validation when an explicit session_id doesn't exist, (2) redundant DISTINCT with GROUP BY, (3) no unit tests added. All follow existing codebase patterns and none block acceptance."
+}

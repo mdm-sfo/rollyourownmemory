@@ -1,0 +1,28 @@
+{
+  "featureId": "team-memory-docs",
+  "reviewedAt": "2026-03-15T14:30:00.000Z",
+  "commitId": "8b5d191",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Documentation-only change adding a 'Team & Shared Memory' section to README.md (45 lines). All 6 review criteria are met: (1) section exists at line 423, (2) contains 3 architecture options (Shared Database, Sync via Wormhole, Per-User Partitioning), (3) includes Privacy Considerations subsection with 5 bullet points, (4) includes Team Setup Checklist with 5 steps, (5) correctly positioned after Multi-Machine Support (line 413) and before Schema (line 468), (6) content is well-written, technically accurate, and complete. Option 1 honestly notes that MEMORY_DB_PATH env var support would need to be added to scripts. Option 2 leverages existing wormhole architecture. Option 3 provides concrete SQL for per-user partitioning. Privacy section covers plaintext storage, machine attribution, sensitive fact risk, curation recommendation, and encryption-at-rest for regulated environments.",
+    "issues": [
+      {
+        "file": "README.md",
+        "line": 437,
+        "severity": "non_blocking",
+        "description": "Option 1 documents a MEMORY_DB_PATH environment variable that doesn't yet exist in the codebase. While the note transparently states this 'requires adding' the support, a reader could initially mistake this for existing functionality. Consider prefixing the code block with '(proposed)' or similar."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "No SKILL.md file found for the 'python-worker' skill at .factory/skills/python-worker/SKILL.md. The feature's skillName is 'python-worker' but the skill definition file doesn't exist in the expected location. Cannot verify if the worker followed the skill's procedure since there's no procedure to compare against.",
+      "evidence": "Glob search for **/*SKILL* under .factory/ returned no matches. Feature JSON has skillName: 'python-worker'."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Clean pass. The Team & Shared Memory documentation section is well-structured and meets all 6 review criteria. It adds 45 lines to README.md with three concrete architecture options, privacy considerations, and a team setup checklist. The only minor note is that Option 1 references a proposed (not yet implemented) MEMORY_DB_PATH environment variable, but the documentation is transparent about this. No code changes were made, consistent with the documentation-only requirement. Commit message follows the expected 'docs:' convention."
+}

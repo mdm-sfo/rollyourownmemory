@@ -1,0 +1,78 @@
+{
+  "milestone": "advanced-features",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": { "passed": true, "command": ".venv/bin/python -m pytest tests/ -v", "exitCode": 0 },
+    "typecheck": { "passed": true, "command": "echo \"No typecheck configured (no mypy/pyright in project)\"", "exitCode": 0 },
+    "lint": { "passed": true, "command": "echo \"No linter configured\"", "exitCode": 0 }
+  },
+  "reviewsSummary": {
+    "total": 5,
+    "passed": 5,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add guidance: MCP tools should have at least a basic unit test covering function signature and edge cases (empty DB, invalid input). Currently no MCP tool has dedicated tests, creating a growing coverage gap.",
+      "evidence": "Reviews for mcp-resume-context and mcp-feedback-tool both note no unit tests added. Grep for '@mcp.tool' in test files returns zero matches across 26 tests. 6 MCP tools now exist without any dedicated test coverage.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add coding convention: Use try/finally or context manager pattern for DB connections (conn = get_conn(); try: ... finally: conn.close()). Pre-existing pattern of bare conn.close() without exception protection risks connection leaks.",
+      "evidence": "mcp_server.py lines 54-62 (memory_search), 119-121 (memory_semantic_search), 571-610 (memory_feedback) all use conn = get_conn() followed by conn.close() without try/finally. Pattern is consistent but fragile.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "No SKILL.md file found for the 'python-worker' skill at .factory/skills/python-worker/SKILL.md.",
+      "reason": "Out of scope for this milestone. The python-worker skill is a project droid, not a file managed by workers."
+    },
+    {
+      "observation": "Error/solution categories have zero facts in DB despite being defined in FACT_CATEGORIES.",
+      "reason": "Expected behavior — categories were just added and no real distill runs have occurred with the new prompt to categorize facts as error/solution."
+    },
+    {
+      "observation": "Worker followed all AGENTS.md conventions correctly (from cross-project-patterns review).",
+      "reason": "Positive observation, no action needed."
+    },
+    {
+      "observation": "Worker followed the python-worker skill procedure correctly (from cross-project-patterns review).",
+      "reason": "Positive observation, no action needed."
+    }
+  ],
+  "nonBlockingIssues": [
+    {
+      "featureId": "mcp-resume-context",
+      "severity": "non_blocking",
+      "description": "When session_id is explicitly provided but doesn't exist, returns nearly empty response instead of 'session not found' message."
+    },
+    {
+      "featureId": "mcp-resume-context",
+      "severity": "non_blocking",
+      "description": "Redundant SELECT DISTINCT with GROUP BY session_id."
+    },
+    {
+      "featureId": "cross-project-patterns",
+      "severity": "non_blocking",
+      "description": "In --promote path, p['pattern'] uses direct key lookup which could raise KeyError if LLM returns malformed dict. Display path safely uses p.get() but promote INSERT does not."
+    },
+    {
+      "featureId": "mcp-feedback-tool",
+      "severity": "non_blocking",
+      "description": "Corrected fact inserted via store_fact() has NULL timestamp, so it won't appear in time-filtered queries."
+    },
+    {
+      "featureId": "team-memory-docs",
+      "severity": "non_blocking",
+      "description": "Option 1 documents a MEMORY_DB_PATH env var that doesn't yet exist in the codebase. While transparent about it, readers could initially mistake this for existing functionality."
+    }
+  ],
+  "previousRound": null
+}
