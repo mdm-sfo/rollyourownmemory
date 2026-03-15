@@ -110,6 +110,8 @@ Protocols:      ssh(77x), http(76x), websocket(20x)
 | `src/curate.py` | Interactive fact review, hand-curation, import/export. |
 | `bin/claude-recall` | CLI search tool: keyword, semantic, sessions, facts. Backward-compatible with bare queries. |
 | `src/mcp_server.py` | MCP server exposing memory tools: search, facts, inspect, deep recall, resume context, feedback. |
+| `src/web.py` | FastAPI web UI: browser-based search, fact curation, CLAUDE.md editor, context preview. |
+| `static/` | Frontend assets (HTML, CSS, JS) for the web UI. |
 
 ## Setup
 
@@ -409,6 +411,27 @@ python3 src/curate.py export
 # View stats
 python3 src/curate.py stats
 ```
+
+## Web UI
+
+A browser-based search engine and curation interface for your memory.
+
+### Starting the Web UI
+
+```bash
+cd /path/to/rollyourownmemory
+.venv/bin/python -m uvicorn src.web:app --host 0.0.0.0 --port 8585
+```
+
+Then open http://localhost:8585 in your browser.
+
+### Features
+
+- **Search** — Full-text search across messages, facts, and sessions. Toggle semantic search for meaning-based results.
+- **Ask** — Get LLM-synthesized answers from your memory with source citations (requires ollama).
+- **Fact Management** — Browse, filter, edit, and delete facts. Adjust confidence scores. Filter by category, project, or confidence range.
+- **CLAUDE.md Editor** — Edit your `~/.claude/CLAUDE.md` with live markdown preview.
+- **Context Preview** — See what `inject.py` would generate for `memory-context.md`. Adjust token budget and project filter.
 
 ## Project-Aware Context
 
