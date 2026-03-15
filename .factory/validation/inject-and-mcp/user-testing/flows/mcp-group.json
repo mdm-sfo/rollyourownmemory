@@ -1,0 +1,65 @@
+{
+  "group": "mcp-group",
+  "testedAt": "2026-03-15T00:00:00Z",
+  "assertions": {
+    "VAL-MCP-001": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/mcp-group/VAL-MCP-001-inspect-tool.txt",
+      "details": "@mcp.tool() decorator on memory_inspect(fact_id: int) at line 226-227 of mcp_server.py"
+    },
+    "VAL-MCP-002": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/mcp-group/VAL-MCP-002-inspect-context.txt",
+      "details": "memory_inspect returns: fact details (lines 241-248), compressed_details with try/except (lines 254-259), source message via source_message_id (lines 262-272), sibling facts from same session (lines 276-284), related entities from same session (lines 287-298)"
+    },
+    "VAL-MCP-003": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/mcp-group/VAL-MCP-003-fact-ids.txt",
+      "details": "Line 199: f\"[#{r['id']}] [{r['category']}] ...\" — fact IDs shown as [#<id>] prefix"
+    },
+    "VAL-MCP-004": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/mcp-group/VAL-MCP-004-compressed-details.txt",
+      "details": "Lines 192-196: compressed_details read via try/except, appended as ' [details compressed: {cd}]' when present and non-empty"
+    },
+    "VAL-MCP-005": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/mcp-group/VAL-MCP-005-deep-recall-exists.txt",
+      "details": "@mcp.tool() decorator on memory_deep_recall(query, synthesize=True, limit=10, project=None) at lines 309-311"
+    },
+    "VAL-MCP-006": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/mcp-group/VAL-MCP-006-deep-recall-both.txt",
+      "details": "Step 1 queries facts_fts (lines 327-331), Step 2 queries messages_fts (lines 350-354), results combined in output"
+    },
+    "VAL-MCP-007": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/mcp-group/VAL-MCP-007-synthesis-fallback.txt",
+      "details": "httpx.post to localhost:11434 wrapped in try/except Exception (line 423). Falls back to raw results with 'LLM synthesis unavailable' label (line 428)"
+    },
+    "VAL-MCP-013": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/mcp-group/VAL-MCP-013-error-solution-categories.txt",
+      "details": "Line 214: valid = {..., 'error', 'solution'} — both categories included in validation set"
+    },
+    "VAL-MCP-014": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/mcp-group/VAL-MCP-014-feedback-hints.txt",
+      "details": "Line 201: return string includes '(use memory_inspect for details, memory_feedback to correct)'"
+    },
+    "VAL-MCP-015": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/mcp-group/VAL-MCP-015-ollama-down-graceful.txt",
+      "details": "try/except Exception (line 423) around httpx.post catches ConnectError when ollama is down. Fallback returns raw results with 'LLM synthesis unavailable' note (line 428). No crash."
+    },
+    "VAL-MCP-016": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/mcp-group/VAL-MCP-016-missing-compressed-details.txt",
+      "details": "Lines 253-259: try/except (IndexError, KeyError) around fact['compressed_details'] access. Comment says 'handle missing column gracefully'. Works on pre-migration DBs."
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "toolsUsed": ["Read", "Grep", "Execute"],
+  "summary": "Tested 11 assertions: all 11 passed. All MCP tool assertions verified through code inspection of src/mcp_server.py. memory_inspect exists with full context return (fact details, compressed_details, source message, sibling facts, entities). memory_search_facts shows fact IDs and compressed_details with feedback hints. memory_deep_recall exists with dual FTS search and LLM synthesis with graceful fallback. memory_add_fact accepts error/solution categories. Both memory_inspect and memory_deep_recall handle missing data and ollama-down scenarios gracefully."
+}

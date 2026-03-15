@@ -1,0 +1,38 @@
+{
+  "milestone": "inject-and-mcp",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 21,
+    "passed": 21,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-INJECT-001",
+    "VAL-INJECT-002",
+    "VAL-INJECT-003",
+    "VAL-INJECT-004",
+    "VAL-INJECT-005",
+    "VAL-INJECT-006",
+    "VAL-MCP-001",
+    "VAL-MCP-002",
+    "VAL-MCP-003",
+    "VAL-MCP-004",
+    "VAL-MCP-005",
+    "VAL-MCP-006",
+    "VAL-MCP-007",
+    "VAL-MCP-013",
+    "VAL-MCP-014",
+    "VAL-MCP-015",
+    "VAL-MCP-016",
+    "VAL-DOC-001",
+    "VAL-DOC-002",
+    "VAL-DOC-005",
+    "VAL-DOC-006"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null
+}

@@ -1,0 +1,40 @@
+{
+  "group": "inject-group",
+  "testedAt": "2026-03-15T00:00:00Z",
+  "assertions": {
+    "VAL-INJECT-001": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/inject-group/VAL-INJECT-001-code-inspection.txt",
+      "details": "generate_memory_context() builds sections independently with priority values (2-5) in a prioritized_sections list and assembles them in priority order using sorted(), respecting the token budget (budget_chars = max_tokens * 4). Sections that exceed remaining budget are skipped."
+    },
+    "VAL-INJECT-002": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/inject-group/VAL-INJECT-002-priority-order.txt",
+      "details": "Priority order confirmed: Header (implicit 1, always first) > Key Facts (2) > Focus recall (3) > Recent Sessions (4) > Active Stack (5). Matches the docstring and the append order in code."
+    },
+    "VAL-INJECT-003": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/inject-group/VAL-INJECT-003-no-dumb-truncation.txt",
+      "details": "No output[:max_chars] or any [:max_ pattern found in inject.py. The assembly loop skips sections that don't fit entirely (comment: 'skip this section — doesn't fit in the token budget'). No mid-text truncation occurs."
+    },
+    "VAL-INJECT-004": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/inject-group/VAL-INJECT-004-budget-overflow-facts.txt",
+      "details": "When Key Facts section exceeds budget (len(facts_text) // 4 > max_tokens), the function retries with progressively smaller SQL LIMITs: 30 -> 10 -> 5. Only adds to prioritized_sections if it fits."
+    },
+    "VAL-INJECT-005": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/inject-group/VAL-INJECT-005-stdout-flag.txt",
+      "details": "Running `.venv/bin/python src/inject.py --stdout --max-tokens 500 | head -5` produced output starting with '# Memory Context (claude-memory)' followed by Key Facts. Exit code 0. The --stdout flag prints to stdout via print(output)."
+    },
+    "VAL-INJECT-006": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/inject-group/VAL-INJECT-006-help-output.txt",
+      "details": "Running `.venv/bin/python src/inject.py --help` displayed complete usage with all flags: --project, --focus, --max-tokens, --output, --stdout, --no-detect. Exit code 0."
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "toolsUsed": ["Execute", "Read", "Grep"],
+  "summary": "Tested 6 assertions: all 6 passed. inject.py implements priority-based section assembly (priorities 1-5), skips sections that don't fit (no mid-text truncation), handles facts budget overflow with progressive LIMIT reduction, and supports --stdout and --help flags correctly."
+}

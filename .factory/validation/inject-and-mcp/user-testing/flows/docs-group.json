@@ -1,0 +1,30 @@
+{
+  "group": "docs-group",
+  "testedAt": "2026-03-15T00:00:00Z",
+  "assertions": {
+    "VAL-DOC-001": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/docs-group/VAL-DOC-001-claude-md-tools.txt",
+      "details": "CLAUDE.md contains all four new tools in the MCP Tools table: memory_inspect (line 36), memory_deep_recall (line 37), memory_resume_context (line 38), memory_feedback (line 39)."
+    },
+    "VAL-DOC-002": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/docs-group/VAL-DOC-002-readme-architecture.txt",
+      "details": "README.md architecture ASCII diagram includes memory_inspect, memory_deep_recall, memory_resume_context, and memory_feedback (lines 66-68). The 'What's In the Box' table also reflects the new tools (line 112)."
+    },
+    "VAL-DOC-005": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/docs-group/VAL-DOC-005-readme-schema-compressed-details.txt",
+      "details": "README.md Schema section includes compressed_details in the facts table description (line 372): 'facts — id, session_id, project, fact, category, confidence, source_message_id, compressed_details'."
+    },
+    "VAL-DOC-006": {
+      "status": "pass",
+      "evidence": "inject-and-mcp/docs-group/VAL-DOC-006-readme-drill-down-scenario.txt",
+      "details": "README.md includes a 'Drill into compressed details' usage scenario (line 290) demonstrating the inspect/deep_recall escalation pattern: user asks a detailed question → Claude finds fact with compressed_details → calls memory_inspect → calls memory_deep_recall to synthesize the full answer."
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "toolsUsed": ["Read", "Grep"],
+  "summary": "Tested 4 assertions: all 4 passed. CLAUDE.md and README.md both contain the required documentation for new MCP tools, compressed_details schema field, and the drill-down escalation scenario."
+}
