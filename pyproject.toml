@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-embeddings = ["sentence-transformers"]
+embeddings = ["sentence-transformers", "faiss-cpu"]
 mcp = ["mcp"]
 all = ["claude-memory[embeddings,mcp]"]
 dev = ["pytest"]
