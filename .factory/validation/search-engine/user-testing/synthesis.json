@@ -1,40 +1,16 @@
 {
   "milestone": "search-engine",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "assertionsSummary": {
-    "total": 31,
-    "passed": 30,
-    "failed": 1,
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
     "blocked": 0
   },
-  "passedAssertions": [
-    "VAL-APP-001", "VAL-APP-002", "VAL-APP-003", "VAL-APP-004", "VAL-APP-005",
-    "VAL-SEARCH-001", "VAL-SEARCH-002", "VAL-SEARCH-003", "VAL-SEARCH-004",
-    "VAL-SEARCH-005", "VAL-SEARCH-006", "VAL-SEARCH-007", "VAL-SEARCH-008",
-    "VAL-SEARCH-010", "VAL-SEARCH-011", "VAL-SEARCH-012", "VAL-SEARCH-013", "VAL-SEARCH-014",
-    "VAL-INSPECT-001", "VAL-INSPECT-002", "VAL-INSPECT-003", "VAL-INSPECT-004", "VAL-INSPECT-005",
-    "VAL-SESSION-001", "VAL-SESSION-002", "VAL-SESSION-003",
-    "VAL-CROSS-001", "VAL-CROSS-002", "VAL-CROSS-004", "VAL-CROSS-005", "VAL-CROSS-006"
-  ],
-  "failedAssertions": [
-    {
-      "id": "VAL-SEARCH-009",
-      "reason": "API response time ~1.6s (exceeds 500ms threshold). FTS queries themselves take ~3.5ms, but the /api/search endpoint bundles semantic search (sentence-transformers + FAISS inference ~1.5s) into every request with no parameter to skip it. Fix: add a `type=fts` parameter or run semantic search asynchronously."
-    }
-  ],
+  "passedAssertions": ["VAL-SEARCH-009"],
+  "failedAssertions": [],
   "blockedAssertions": [],
-  "appliedUpdates": [
-    {
-      "target": "user-testing.md",
-      "description": "Added Flow Validator Guidance sections for browser and curl surfaces, known frictions (SPA click handling, bundled search timing, LLM latency), and concurrency configuration",
-      "source": "setup"
-    },
-    {
-      "target": "user-testing.md",
-      "description": "Added SPA click workaround, bundled search timing, and LLM first-token latency notes from flow report frictions",
-      "source": "flow-report"
-    }
-  ],
-  "previousRound": null
+  "appliedUpdates": [],
+  "previousRound": ".factory/validation/search-engine/user-testing/synthesis-round1.json"
 }

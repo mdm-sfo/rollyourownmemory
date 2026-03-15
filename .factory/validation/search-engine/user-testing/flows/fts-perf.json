@@ -1,0 +1,81 @@
+{
+  "groupId": "fts-perf",
+  "testedAt": "2026-03-15T00:00:00Z",
+  "isolation": {
+    "appUrl": "http://localhost:8585",
+    "database": "memory.db",
+    "searchTerms": ["kalshi", "tailscale", "JWT"]
+  },
+  "toolsUsed": ["curl"],
+  "assertions": [
+    {
+      "id": "VAL-SEARCH-009",
+      "title": "Search response time under 500ms for FTS",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "curl with timing: GET /api/search?q=kalshi (default, no type param)",
+          "expected": "Response time under 500ms",
+          "observed": "Response time: 7.0ms (HTTP 200)"
+        },
+        {
+          "action": "curl with timing: GET /api/search?q=tailscale (default, no type param)",
+          "expected": "Response time under 500ms",
+          "observed": "Response time: 14.5ms (HTTP 200)"
+        },
+        {
+          "action": "curl with timing: GET /api/search?q=JWT (default, no type param)",
+          "expected": "Response time under 500ms",
+          "observed": "Response time: 3.2ms (HTTP 200)"
+        },
+        {
+          "action": "curl with timing: GET /api/search?q=kalshi&type=fts (explicit FTS)",
+          "expected": "Response time under 500ms",
+          "observed": "Response time: 6.2ms (HTTP 200)"
+        },
+        {
+          "action": "curl with timing: GET /api/search?q=tailscale&type=fts (explicit FTS)",
+          "expected": "Response time under 500ms",
+          "observed": "Response time: 4.2ms (HTTP 200)"
+        },
+        {
+          "action": "curl with timing: GET /api/search?q=JWT&type=fts (explicit FTS)",
+          "expected": "Response time under 500ms",
+          "observed": "Response time: 2.8ms (HTTP 200)"
+        },
+        {
+          "action": "Verify default response has empty semantic array",
+          "expected": "semantic array is empty when no type param specified",
+          "observed": "semantic count: 0 (empty). Messages: 20, facts: 20, sessions: 10 returned."
+        },
+        {
+          "action": "Comparison: curl with timing: GET /api/search?q=kalshi&type=all",
+          "expected": "Slower response with semantic results included",
+          "observed": "Response time: 1706ms (HTTP 200), semantic count: 5. Confirms type separation works."
+        }
+      ],
+      "evidence": {
+        "timingLog": "search-engine/fts-perf/VAL-SEARCH-009-timing-results.txt",
+        "screenshots": [],
+        "consoleErrors": "N/A (API-only test)",
+        "network": "GET /api/search?q=kalshi -> 200 (7.0ms), GET /api/search?q=tailscale -> 200 (14.5ms), GET /api/search?q=JWT -> 200 (3.2ms), GET /api/search?q=kalshi&type=fts -> 200 (6.2ms), GET /api/search?q=tailscale&type=fts -> 200 (4.2ms), GET /api/search?q=JWT&type=fts -> 200 (2.8ms), GET /api/search?q=kalshi&type=all -> 200 (1706ms)"
+      },
+      "measurements": {
+        "default_kalshi_ms": 7.0,
+        "default_tailscale_ms": 14.5,
+        "default_jwt_ms": 3.2,
+        "explicit_fts_kalshi_ms": 6.2,
+        "explicit_fts_tailscale_ms": 4.2,
+        "explicit_fts_jwt_ms": 2.8,
+        "type_all_kalshi_ms": 1706.5,
+        "max_fts_ms": 14.5,
+        "threshold_ms": 500,
+        "all_under_threshold": true
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 1 assertion (VAL-SEARCH-009): PASS. All 6 FTS queries completed in 2.8ms-14.5ms, well under the 500ms threshold. The type parameter fix (commit 50215e9) successfully separates FTS from semantic search — default queries return FTS-only results (semantic array empty) while type=all includes semantic results at ~1.7s."
+}
