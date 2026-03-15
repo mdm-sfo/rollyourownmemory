@@ -13,6 +13,7 @@ import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 try:
     from src.memory_db import get_conn
@@ -219,9 +220,90 @@ def get_session_messages(conn, session_id):
             for r in rows]
 
 
+_embedding_model = None
+
+
+def _get_dedup_model():
+    """Lazy-load the sentence-transformer model for deduplication."""
+    global _embedding_model
+    if _embedding_model is None:
+        try:
+            from src.embed import get_model as _get_embed_model, DEFAULT_MODEL as _embed_default
+        except ImportError:
+            from embed import get_model as _get_embed_model, DEFAULT_MODEL as _embed_default
+        _embedding_model = _get_embed_model(_embed_default)
+    return _embedding_model
+
+
+def _compute_embedding(text: str):
+    """Compute a normalized embedding for a fact text string."""
+    import numpy as np
+    model = _get_dedup_model()
+    vec = model.encode([text[:2048]], normalize_embeddings=True)[0]
+    return vec.astype(np.float32)
+
+
+def _load_existing_fact_embeddings(conn: sqlite3.Connection):
+    """Load existing facts with confidence > 0 and compute their embeddings on the fly.
+
+    Returns (facts_list, embeddings_matrix) where embeddings_matrix is (N, dim).
+    Returns empty lists/array if no qualifying facts exist.
+    """
+    import numpy as np
+    rows = conn.execute(
+        "SELECT id, fact, confidence FROM facts WHERE confidence > 0"
+    ).fetchall()
+    if not rows:
+        return [], np.array([])
+
+    facts_list = [dict(r) for r in rows]
+    model = _get_dedup_model()
+    texts = [f["fact"][:2048] for f in facts_list]
+    embeddings = model.encode(texts, show_progress_bar=False, normalize_embeddings=True)
+    return facts_list, embeddings.astype(np.float32)
+
+
+def _is_near_duplicate(candidate_vec, existing_embeddings,
+                       threshold: float = 0.85) -> Optional[int]:
+    """Check if candidate_vec is a near-duplicate of any existing embedding.
+
+    Returns the index of the most similar existing fact if similarity > threshold,
+    or None if no near-duplicate found.
+    """
+    import numpy as np
+    if existing_embeddings.size == 0:
+        return None
+    similarities = existing_embeddings @ candidate_vec
+    max_idx = int(np.argmax(similarities))
+    if similarities[max_idx] > threshold:
+        return max_idx
+    return None
+
+
 def store_facts(conn, facts):
+    """Store facts, skipping near-duplicates based on embedding cosine similarity."""
+    import numpy as np
+
+    # Load existing fact embeddings for dedup check
+    existing_facts, existing_embeddings = _load_existing_fact_embeddings(conn)
+
     inserted = 0
+    skipped = 0
     for f in facts:
+        # Check for near-duplicate before inserting
+        candidate_vec = _compute_embedding(f["fact"])
+        dup_idx = _is_near_duplicate(candidate_vec, existing_embeddings)
+        if dup_idx is not None:
+            existing = existing_facts[dup_idx]
+            print(
+                f"Skipping near-duplicate fact (similarity >0.85): "
+                f"'{f['fact'][:80]}...' ~ existing fact id={existing['id']}: "
+                f"'{existing['fact'][:80]}...'",
+                file=sys.stderr,
+            )
+            skipped += 1
+            continue
+
         try:
             conn.execute(
                 """INSERT INTO facts (session_id, project, fact, category, confidence,
@@ -231,9 +313,113 @@ def store_facts(conn, facts):
                  f["confidence"], f["source_message_id"], f["timestamp"]),
             )
             inserted += 1
+            # Add the newly inserted fact to existing embeddings for subsequent checks
+            new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            existing_facts.append({"id": new_id, "fact": f["fact"], "confidence": f["confidence"]})
+            if existing_embeddings.size == 0:
+                existing_embeddings = candidate_vec.reshape(1, -1)
+            else:
+                existing_embeddings = np.vstack([existing_embeddings, candidate_vec.reshape(1, -1)])
         except sqlite3.IntegrityError:
             pass
+
+    if skipped:
+        print(f"Dedup: {skipped} near-duplicate fact(s) skipped.", file=sys.stderr)
     return inserted
+
+
+def dedup_facts(db_path: Optional[str] = None, threshold: float = 0.85) -> int:
+    """Scan existing facts for near-duplicate clusters and remove lower-confidence duplicates.
+
+    Keeps the highest-confidence fact per cluster, deletes the rest.
+    Returns the number of facts removed.
+    """
+    import numpy as np
+
+    conn = get_conn(db_path or str(DB_PATH))
+    rows = conn.execute(
+        "SELECT id, fact, confidence FROM facts WHERE confidence > 0 ORDER BY id"
+    ).fetchall()
+
+    if not rows:
+        print("No facts with confidence > 0 found.")
+        conn.close()
+        return 0
+
+    facts_list = [dict(r) for r in rows]
+    model = _get_dedup_model()
+    texts = [f["fact"][:2048] for f in facts_list]
+    embeddings = model.encode(texts, show_progress_bar=False, normalize_embeddings=True).astype(np.float32)
+
+    n = len(facts_list)
+    print(f"Scanning {n} facts for near-duplicates (threshold={threshold})...")
+
+    # Union-Find for clustering
+    parent = list(range(n))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a: int, b: int) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    # Compute pairwise similarities and build clusters
+    similarity_matrix = embeddings @ embeddings.T
+    for i in range(n):
+        for j in range(i + 1, n):
+            if similarity_matrix[i, j] > threshold:
+                union(i, j)
+
+    # Group by cluster
+    clusters: dict[int, list[int]] = {}
+    for i in range(n):
+        root = find(i)
+        clusters.setdefault(root, []).append(i)
+
+    # Find clusters with duplicates and decide what to remove
+    to_delete: list[int] = []
+    report_lines: list[str] = []
+
+    for root, members in sorted(clusters.items()):
+        if len(members) < 2:
+            continue
+
+        # Sort by confidence descending, then by id ascending (keep earliest among ties)
+        member_facts = [(idx, facts_list[idx]) for idx in members]
+        member_facts.sort(key=lambda x: (-x[1]["confidence"], x[1]["id"]))
+
+        keeper_idx, keeper = member_facts[0]
+        report_lines.append(f"\nCluster (keeping id={keeper['id']}, conf={keeper['confidence']:.2f}):")
+        report_lines.append(f"  KEEP: [{keeper['id']}] {keeper['fact'][:100]}")
+
+        for idx, fact in member_facts[1:]:
+            to_delete.append(fact["id"])
+            report_lines.append(f"  DEL:  [{fact['id']}] (conf={fact['confidence']:.2f}) {fact['fact'][:100]}")
+
+    if not to_delete:
+        print("No duplicate clusters found.")
+        conn.close()
+        return 0
+
+    # Print report
+    print(f"\n=== Deduplication Report ===")
+    print(f"Found {len(report_lines)} lines in {sum(1 for m in clusters.values() if len(m) >= 2)} cluster(s)")
+    for line in report_lines:
+        print(line)
+
+    # Delete duplicates (FTS index cleaned up by facts_ad trigger)
+    placeholders = ",".join("?" * len(to_delete))
+    conn.execute(f"DELETE FROM facts WHERE id IN ({placeholders})", to_delete)
+    conn.commit()
+    conn.close()
+
+    print(f"\nRemoved {len(to_delete)} duplicate fact(s).")
+    return len(to_delete)
 
 
 def distill(use_llm=False, api_base=None, limit=None):
@@ -300,6 +486,10 @@ def main():
     show.add_argument("--limit", "-n", type=int, default=20)
     show.add_argument("--min-confidence", type=float, default=0.0)
 
+    dedup = sub.add_parser("dedup", help="Remove near-duplicate facts via embedding similarity")
+    dedup.add_argument("--threshold", type=float, default=0.85,
+                       help="Cosine similarity threshold (default: 0.85)")
+
     stats = sub.add_parser("stats", help="Show distillation statistics")
 
     args = parser.parse_args()
@@ -346,6 +536,8 @@ def main():
             print(f"[{ts}] [{r['category']}] (conf={r['confidence']:.1f}) {proj}")
             print(f"  {r['fact']}\n")
 
+    elif args.command == "dedup":
+        dedup_facts(threshold=args.threshold)
     elif args.command == "stats":
         conn = get_conn(str(DB_PATH))
         total_sessions = conn.execute("SELECT COUNT(DISTINCT session_id) FROM messages").fetchone()[0]
