@@ -34,7 +34,7 @@ After ~2 months of normal Claude Code usage, the system has accumulated:
 |--------|-------|
 | Conversations indexed | 13,000+ messages across 400+ sessions |
 | Vector embeddings | 13,000+ (every message searchable by meaning) |
-| Facts extracted | 670+ (preferences, decisions, learnings, context) |
+| Facts extracted | 670+ (preference, decision, learning, context, tool, pattern, error, solution) |
 | Entities tracked | 330+ (libraries, tools, services, languages) |
 | Machines covered | 3 (primary dev, cloud server, secondary) |
 | Projects spanned | 14 |
@@ -104,7 +104,7 @@ Protocols:      ssh(77x), http(76x), websocket(20x)
 | `schema.sql` | SQLite schema: messages, embeddings, facts, entities with FTS5 indexes |
 | `src/ingest.py` | ETL pipeline: reads Claude Code JSONL logs → SQLite. Incremental via byte-offset cursors. |
 | `src/embed.py` | Generates sentence-transformer embeddings for semantic search. |
-| `src/distill.py` | Extracts structured facts from conversations using regex heuristics + local LLM (ollama). |
+| `src/distill.py` | Extracts structured facts from conversations using regex heuristics + local LLM (ollama). Includes dedup (embedding-similarity deduplication), cross-project pattern detection, error/solution categorization, and compressed_details extraction. |
 | `src/entities.py` | Identifies tools, libraries, languages, platforms mentioned across conversations. |
 | `src/inject.py` | Generates `memory-context.md` for passive injection into CLAUDE.md. Project-aware via `$PWD`. |
 | `src/curate.py` | Interactive fact review, hand-curation, import/export. |
@@ -375,6 +375,19 @@ Claude Code calls these automatically when relevant. You can also ask directly. 
 
 # Generate project-specific context
 .venv/bin/python src/inject.py --project myproject
+
+# Print memory context to stdout (used by hooks)
+.venv/bin/python src/inject.py --stdout
+
+# Deduplicate similar facts by embedding similarity
+.venv/bin/python src/distill.py dedup
+# Custom similarity threshold (default 0.9)
+.venv/bin/python src/distill.py dedup --threshold 0.85
+
+# Detect cross-project patterns
+.venv/bin/python src/distill.py patterns
+# Promote detected patterns to global facts
+.venv/bin/python src/distill.py patterns --promote
 ```
 
 ### Fact Curation
@@ -518,6 +531,8 @@ Any ollama model works — just pass its name via `--model`.
 .venv/bin/python src/inject.py --max-tokens 3000 -o ~/.claude/memory-context.md
 ```
 
+Sections are assigned priorities (header=1, facts=2, focus=3, sessions=4, stack=5). When the budget is tight, lower-priority sections are dropped entirely rather than truncating mid-section — so you always get coherent context blocks.
+
 ## Maintenance
 
 **Monthly (~5 min):**
@@ -535,7 +550,7 @@ Any ollama model works — just pass its name via `--model`.
 
 - **Semantic search loads embeddings into memory.** FAISS mitigates this, but `embed.py build` needs ~300 MB RAM. Use `--batch-size 64` on machines with less than 4 GB.
 - **Fact extraction quality depends on the LLM.** The heuristic extractor catches obvious patterns; use `--llm` with a 7B+ parameter model for best results.
-- **No multi-user support.** The system assumes a single user. All sessions, facts, and entities share one database with no access control.
+- **Multi-user support is experimental.** See the [Team & Shared Memory](#team--shared-memory) section for shared database options. All sessions, facts, and entities share one database with no built-in access control.
 - **Schema migrations are additive only.** There is no automated rollback. Back up `memory.db` before upgrading.
 
 ## Privacy
