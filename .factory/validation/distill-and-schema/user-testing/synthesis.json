@@ -1,0 +1,31 @@
+{
+  "milestone": "distill-and-schema",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 14,
+    "passed": 14,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-SCHEMA-001",
+    "VAL-SCHEMA-002",
+    "VAL-SCHEMA-003",
+    "VAL-SCHEMA-004",
+    "VAL-SCHEMA-005",
+    "VAL-SCHEMA-006",
+    "VAL-DISTILL-001",
+    "VAL-DISTILL-002",
+    "VAL-DISTILL-003",
+    "VAL-DISTILL-004",
+    "VAL-DISTILL-005",
+    "VAL-DISTILL-006",
+    "VAL-DISTILL-007",
+    "VAL-DISTILL-008"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null
+}

@@ -1,0 +1,129 @@
+{
+  "groupId": "schema-assertions",
+  "testedAt": "2026-03-15T00:00:00Z",
+  "isolation": {
+    "workingDirectory": "/home/matthewmurray/claude-memory",
+    "pythonExecutable": ".venv/bin/python",
+    "database": ":memory:",
+    "readOnly": true
+  },
+  "toolsUsed": ["Execute", "Read", "Grep"],
+  "assertions": [
+    {
+      "id": "VAL-SCHEMA-001",
+      "title": "compressed_details column in facts table",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read schema.sql and search for compressed_details in CREATE TABLE facts",
+          "expected": "compressed_details TEXT column present in facts table definition",
+          "observed": "Line 53: `compressed_details TEXT, -- comma-separated list of specifics omitted during extraction` found inside CREATE TABLE facts block, after last_validated"
+        }
+      ],
+      "evidence": {
+        "files": ["distill-and-schema/schema-assertions/VAL-SCHEMA-001-schema-sql-facts-table.txt"],
+        "keyLine": "schema.sql:53: compressed_details TEXT, -- comma-separated list of specifics omitted during extraction"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SCHEMA-002",
+      "title": "compressed_details in facts_fts",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Search for facts_fts virtual table definition in schema.sql",
+          "expected": "facts_fts USING fts5 includes compressed_details alongside fact and category",
+          "observed": "Lines 103-110: CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(fact, category, compressed_details, content='facts', content_rowid='id', tokenize='porter unicode61')"
+        }
+      ],
+      "evidence": {
+        "files": ["distill-and-schema/schema-assertions/VAL-SCHEMA-002-facts-fts-definition.txt"],
+        "keyLine": "facts_fts USING fts5(fact, category, compressed_details, ...)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SCHEMA-003",
+      "title": "FTS triggers include compressed_details",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Search for all three FTS triggers (facts_ai, facts_au, facts_ad) in schema.sql",
+          "expected": "All three triggers include compressed_details in their INSERT statements",
+          "observed": "facts_ai (line 131): INSERT INTO facts_fts(rowid, fact, category, compressed_details) VALUES (new.id, new.fact, new.category, new.compressed_details); facts_au (lines 136-139): Both DELETE and INSERT include compressed_details for old and new values; facts_ad (lines 143-144): DELETE includes compressed_details for old values"
+        }
+      ],
+      "evidence": {
+        "files": ["distill-and-schema/schema-assertions/VAL-SCHEMA-003-fts-triggers.txt"],
+        "keyLines": [
+          "131: INSERT INTO facts_fts(rowid, fact, category, compressed_details)",
+          "136: INSERT INTO facts_fts(facts_fts, rowid, fact, category, compressed_details)",
+          "138: INSERT INTO facts_fts(rowid, fact, category, compressed_details)",
+          "143: INSERT INTO facts_fts(facts_fts, rowid, fact, category, compressed_details)"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SCHEMA-004",
+      "title": "Migration adds compressed_details to existing DB",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect migrate_schema() in src/memory_db.py",
+          "expected": "Function adds compressed_details column if missing and handles FTS5 rebuild (drop+recreate facts_fts)",
+          "observed": "migrate_schema() in memory_db.py: (1) Migration 2 at line ~30 checks columns via PRAGMA table_info and runs ALTER TABLE facts ADD COLUMN compressed_details TEXT if missing. (2) Migration 3 checks if facts_fts includes compressed_details by inspecting sqlite_master sql; if not, sets needs_fts_rebuild=True. (3) When needs_fts_rebuild: drops triggers (facts_ai, facts_au, facts_ad), drops facts_fts table, recreates facts_fts with compressed_details, recreates all three triggers with compressed_details, and runs INSERT INTO facts_fts(facts_fts) VALUES('rebuild')."
+        }
+      ],
+      "evidence": {
+        "files": ["distill-and-schema/schema-assertions/VAL-SCHEMA-004-migration-code.txt"],
+        "keyFeatures": [
+          "ALTER TABLE facts ADD COLUMN compressed_details TEXT",
+          "DROP TABLE IF EXISTS facts_fts",
+          "CREATE VIRTUAL TABLE facts_fts with compressed_details",
+          "Trigger recreation with compressed_details",
+          "FTS rebuild via INSERT INTO facts_fts(facts_fts) VALUES('rebuild')"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SCHEMA-005",
+      "title": "Migration comment in schema.sql",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read the top of schema.sql for migration instructions comment block",
+          "expected": "SQL comment block with migration instructions for upgrading existing databases",
+          "observed": "Lines 4-7 contain: '-- Migration: If upgrading an existing database, run:\\n--   ALTER TABLE facts ADD COLUMN compressed_details TEXT;\\n--   DROP TABLE IF EXISTS facts_fts;\\n--   -- Then re-run the CREATE VIRTUAL TABLE and trigger statements below\\n--   -- Then rebuild FTS: INSERT INTO facts_fts(facts_fts) VALUES(\\'rebuild\\');'"
+        }
+      ],
+      "evidence": {
+        "files": ["distill-and-schema/schema-assertions/VAL-SCHEMA-005-migration-comment.txt"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SCHEMA-006",
+      "title": "schema.sql is valid SQL",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run sqlite3 :memory: < schema.sql",
+          "expected": "Command succeeds with exit code 0 and no error output",
+          "observed": "Command completed with EXIT_CODE=0 and no error output"
+        }
+      ],
+      "evidence": {
+        "files": ["distill-and-schema/schema-assertions/VAL-SCHEMA-006-sqlite3-validation.txt"],
+        "exitCode": 0,
+        "errors": "none"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 6 assertions: 6 passed, 0 failed, 0 blocked, 0 skipped. All schema assertions for the distill-and-schema milestone are verified."
+}

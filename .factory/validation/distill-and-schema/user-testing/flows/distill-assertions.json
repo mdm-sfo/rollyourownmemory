@@ -1,0 +1,153 @@
+{
+  "groupId": "distill-assertions",
+  "testedAt": "2026-03-15T00:00:00Z",
+  "isolation": {
+    "workingDirectory": "/home/matthewmurray/claude-memory",
+    "pythonExecutable": ".venv/bin/python",
+    "database": ":memory: (not used — code inspection only)",
+    "readOnly": true
+  },
+  "toolsUsed": ["Execute (grep, sed)"],
+  "assertions": [
+    {
+      "id": "VAL-DISTILL-001",
+      "title": "LLM prompt requests compressed_details",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "grep -n 'compressed_details' src/distill.py",
+          "expected": "Prompt text instructs model to return compressed_details key",
+          "observed": "Line 178: prompt includes '- \"compressed_details\": comma-separated list of specifics you omitted from the fact (e.g. \"exact config values, error message text, specific file paths\"). If nothing was omitted, use \"none\".'"
+        },
+        {
+          "action": "Inspect prompt f-string (lines 155-185)",
+          "expected": "compressed_details is part of the JSON schema instructions",
+          "observed": "The prompt says 'Return a JSON array of objects with these keys:' followed by fact, category, and compressed_details with description"
+        }
+      ],
+      "evidence": {
+        "grepOutput": "distill-and-schema/distill-assertions/VAL-DISTILL-001-prompt-compressed-details.txt",
+        "codeSection": "distill-and-schema/distill-assertions/VAL-DISTILL-001-prompt-section.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DISTILL-002",
+      "title": "Fact parsing extracts compressed_details",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect _parse_llm_facts inner function (lines 188-205)",
+          "expected": "Parsing loop reads compressed_details from LLM response and includes in returned dicts",
+          "observed": "Line 199: 'compressed_details': f.get('compressed_details', '')[:500] — extracted from each LLM response object with default empty string and truncated to 500 chars"
+        }
+      ],
+      "evidence": {
+        "codeSection": "distill-and-schema/distill-assertions/VAL-DISTILL-002-parsing-section.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DISTILL-003",
+      "title": "existing_facts parameter accepted",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "grep -n 'existing_facts' src/distill.py",
+          "expected": "extract_facts_llm accepts existing_facts parameter and includes in prompt",
+          "observed": "Line 120: function signature includes 'existing_facts=None'. Lines 148-153: if existing_facts, builds 'ALREADY KNOWN FACTS (do NOT re-extract these or minor variations of them):' section with bullet list of facts, followed by 'Only extract facts that are GENUINELY NEW information not covered above.'"
+        }
+      ],
+      "evidence": {
+        "grepOutput": "distill-and-schema/distill-assertions/VAL-DISTILL-003-existing-facts-param.txt",
+        "codeSection": "distill-and-schema/distill-assertions/VAL-DISTILL-001-prompt-section.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DISTILL-004",
+      "title": "Existing facts loaded before session loop",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect distill() function (lines 473-512)",
+          "expected": "Loads existing facts (confidence > 0, limit 50) before the per-session loop and passes them to extract_facts_llm()",
+          "observed": "Lines 486-489: 'existing_facts_rows = conn.execute(\"SELECT fact FROM facts WHERE confidence > 0 ORDER BY timestamp DESC LIMIT 50\").fetchall()' and 'existing_facts = [r[0] for r in existing_facts_rows]' — happens BEFORE the for-loop at line 494. Line 509: passed as 'existing_facts=existing_facts' to extract_facts_llm()"
+        }
+      ],
+      "evidence": {
+        "codeSection": "distill-and-schema/distill-assertions/VAL-DISTILL-004-distill-existing-facts.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DISTILL-005",
+      "title": "Three-level retry on LLM failure",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect retry logic in extract_facts_llm() (lines 208-254)",
+          "expected": "Level 1: normal (temp 0.1, timeout 180s). Level 2: conservative (temp 0.05, timeout 90s). Level 3: return empty (heuristic fallback).",
+          "observed": "Line 208-209: '# Three-level retry: normal → conservative → heuristic fallback' and '# Level 1: Normal attempt (temp 0.1, timeout 180s)'. Lines 216,218: temperature=0.1, timeout=180. Line 231: '# Level 2: Retry with lower temperature and shorter timeout'. Lines 238,240: temperature=0.05, timeout=90. Line 253: '# Level 3: Return empty — caller runs heuristic extraction separately' followed by 'return []'."
+        }
+      ],
+      "evidence": {
+        "grepOutput": "distill-and-schema/distill-assertions/VAL-DISTILL-005-retry-levels.txt",
+        "codeSection": "distill-and-schema/distill-assertions/VAL-DISTILL-006-retry-stderr.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DISTILL-006",
+      "title": "Retry escalations logged to stderr",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect stderr print statements in retry blocks (lines 224-250)",
+          "expected": "Each retry level prints a message to stderr with failure reason and escalation level",
+          "observed": "Lines 226-228: Level 1 failure prints 'LLM extraction: normal attempt failed ({reason}), retrying with conservative settings...' to file=sys.stderr. Lines 248-250: Level 2 failure prints 'LLM extraction: retry also failed ({reason}), falling back to heuristic only' to file=sys.stderr. Both include the exception reason string via f-string interpolation."
+        }
+      ],
+      "evidence": {
+        "codeSection": "distill-and-schema/distill-assertions/VAL-DISTILL-006-retry-stderr.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DISTILL-007",
+      "title": "store_facts includes compressed_details",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "grep -n 'INSERT INTO facts' src/distill.py and inspect store_facts function",
+          "expected": "INSERT statement includes compressed_details column and value",
+          "observed": "Lines 356-361: INSERT INTO facts includes 'compressed_details' in column list (line 357) and f.get('compressed_details', '') as the 8th parameter value (line 361)."
+        }
+      ],
+      "evidence": {
+        "grepOutput": "distill-and-schema/distill-assertions/VAL-DISTILL-007-store-facts-insert.txt",
+        "codeSection": "distill-and-schema/distill-assertions/VAL-DISTILL-007-store-facts-detail.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DISTILL-008",
+      "title": "Model parameter uses correct default",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "grep -n 'model.*llama' src/distill.py",
+          "expected": "model parameter defaults to 'llama3.3:70b' and is used in API call body via variable (not hardcoded separately)",
+          "observed": "Line 119: extract_facts_llm signature has 'model: str = \"llama3.3:70b\"'. Line 214: Level 1 API call uses '\"model\": model' (variable reference). Line 236: Level 2 retry also uses '\"model\": model' (variable reference). Line 473: distill() also defaults to 'model: str = \"llama3.3:70b\"'. Line 534: argparse default is also 'llama3.3:70b'. The model variable is consistently threaded through — never hardcoded in the API call body."
+        }
+      ],
+      "evidence": {
+        "grepOutput": "distill-and-schema/distill-assertions/VAL-DISTILL-008-model-default.txt"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 8 assertions: all 8 passed. All distill.py features verified via code inspection — compressed_details in prompt/parsing/storage, existing_facts dedup context, three-level retry with stderr logging, and correct model parameter defaults."
+}
