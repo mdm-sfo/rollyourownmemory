@@ -1,0 +1,96 @@
+{
+  "groupId": "claude-editor",
+  "testedAt": "2026-03-15T00:00:00Z",
+  "isolation": {
+    "appUrl": "http://localhost:8585",
+    "browserSession": "de0f9092ba74__claude-editor",
+    "fileOwnership": "~/.claude/CLAUDE.md (exclusive)"
+  },
+  "toolsUsed": ["agent-browser", "curl"],
+  "assertions": [
+    {
+      "id": "VAL-CLAUDE-001",
+      "title": "Editor loads CLAUDE.md content",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:8585", "expected": "App loads", "observed": "App loaded successfully" },
+        { "action": "Click CLAUDE.md nav link via JS eval", "expected": "CLAUDE.md editor section displayed", "observed": "CLAUDE.md Editor section shown with heading, file path, Save button" },
+        { "action": "Verify textarea contains file content", "expected": "Textarea shows ~/.claude/CLAUDE.md content", "observed": "Textarea shows '# Matt Murray — Global Instructions' and full file content including Machines table, Preferences, Hard Rules sections" },
+        { "action": "Verify preview panel shows rendered content", "expected": "Preview panel renders markdown", "observed": "Right-side PREVIEW panel shows rendered H1, paragraphs, and HTML table for Machines" }
+      ],
+      "evidence": {
+        "screenshots": ["curation-and-context/claude-editor/VAL-CLAUDE-001-editor-loaded.png"],
+        "consoleErrors": "none",
+        "network": "GET /api/claude-md -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CLAUDE-002",
+      "title": "Save writes back to file",
+      "status": "pass",
+      "steps": [
+        { "action": "Backup ~/.claude/CLAUDE.md", "expected": "Backup created", "observed": "Backup created at ~/.claude/CLAUDE.md.backup-for-testing" },
+        { "action": "Prepend '## LIVE PREVIEW TEST' text to editor via JS eval", "expected": "Editor content modified", "observed": "Editor content prepended with test text, length 1778 chars" },
+        { "action": "Click Save button via JS eval", "expected": "File saved to disk", "observed": "Save button clicked successfully" },
+        { "action": "Verify file on disk with head command", "expected": "File starts with '## LIVE PREVIEW TEST'", "observed": "File starts with '## LIVE PREVIEW TEST\\n\\nThis text was added to test live preview.\\n\\n# Matt Murray — Global Instructions'" },
+        { "action": "Restore original file from backup", "expected": "Original content restored", "observed": "Original content restored, verified with head -3" }
+      ],
+      "evidence": {
+        "screenshots": ["curation-and-context/claude-editor/VAL-CLAUDE-002-save-confirmed.png"],
+        "consoleErrors": "none",
+        "network": "PUT /api/claude-md -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CLAUDE-003",
+      "title": "Live preview updates as user types",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to CLAUDE.md editor section", "expected": "Editor loaded with content", "observed": "Editor loaded with original CLAUDE.md content and preview panel" },
+        { "action": "Prepend '## LIVE PREVIEW TEST\\nThis text was added to test live preview.' to editor and dispatch input event", "expected": "Preview panel updates to show new content", "observed": "Preview panel immediately rendered 'LIVE PREVIEW TEST' as H2 heading and paragraph text alongside original content" },
+        { "action": "Take screenshot showing editor and preview side by side", "expected": "Screenshot shows matching content in both panes", "observed": "Screenshot confirms left pane has raw markdown '## LIVE PREVIEW TEST' and right pane shows rendered H2 'LIVE PREVIEW TEST'" }
+      ],
+      "evidence": {
+        "screenshots": ["curation-and-context/claude-editor/VAL-CLAUDE-003-live-preview-updated.png"],
+        "consoleErrors": "none",
+        "network": "N/A (client-side preview rendering)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CLAUDE-004",
+      "title": "Editor handles missing file gracefully",
+      "status": "pass",
+      "steps": [
+        { "action": "Rename ~/.claude/CLAUDE.md to ~/.claude/CLAUDE.md.bak", "expected": "File removed from expected path", "observed": "File successfully moved, ls confirms file does not exist" },
+        { "action": "Reload page and navigate to CLAUDE.md editor", "expected": "Editor shows empty/helpful state, no error", "observed": "Editor shows empty textarea with placeholder 'Enter your CLAUDE.md content here...' and markdown syntax hints. Path shows '(new file)'. Preview shows 'No content'." },
+        { "action": "Verify no JavaScript errors in console", "expected": "No console errors", "observed": "No console errors" },
+        { "action": "Restore ~/.claude/CLAUDE.md from backup", "expected": "Original file restored", "observed": "File restored, content verified with head -3" }
+      ],
+      "evidence": {
+        "screenshots": ["curation-and-context/claude-editor/VAL-CLAUDE-004-missing-file.png"],
+        "consoleErrors": "none",
+        "network": "GET /api/claude-md -> 200 (returns empty content for missing file)"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "SPA click handling: Playwright's click command times out on SPA nav links using addEventListener. Used eval with .click() as documented workaround.",
+      "resolved": true,
+      "resolution": "Used agent-browser eval to trigger .click() via JavaScript on data-section elements",
+      "affectedAssertions": ["VAL-CLAUDE-001", "VAL-CLAUDE-002", "VAL-CLAUDE-003", "VAL-CLAUDE-004"]
+    },
+    {
+      "description": "Textarea not visible in agent-browser snapshot -i (not listed as interactive element). Had to use eval to interact with textarea by DOM ID.",
+      "resolved": true,
+      "resolution": "Used eval to read/write textarea value via document.getElementById('claude-md-editor') and dispatched input events manually",
+      "affectedAssertions": ["VAL-CLAUDE-002", "VAL-CLAUDE-003"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 4 assertions: 4 passed, 0 failed. The CLAUDE.md editor loads content correctly, saves changes to disk, provides live preview updates, and handles missing files gracefully with a helpful empty state."
+}

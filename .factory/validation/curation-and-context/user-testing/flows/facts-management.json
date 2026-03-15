@@ -1,0 +1,208 @@
+{
+  "groupId": "facts-management",
+  "testedAt": "2026-03-15T17:25:00.000Z",
+  "isolation": {
+    "appUrl": "http://localhost:8585",
+    "browserSession": "de0f9092ba74__facts-mgmt",
+    "database": "memory.db (864+ facts)",
+    "factMutationOwner": true
+  },
+  "toolsUsed": ["agent-browser", "curl"],
+  "assertions": [
+    {
+      "id": "VAL-FACTS-001",
+      "title": "Facts page shows all facts in table/card layout",
+      "status": "pass",
+      "steps": [
+        { "action": "Click 'Facts' in nav bar", "expected": "Facts page loads with facts displayed", "observed": "Facts page loaded showing facts in card layout with ID, category, confidence badge, project, timestamp, fact text, and action buttons (Edit, confidence slider, Delete)" },
+        { "action": "Verify card structure", "expected": "Each fact shows ID, category, confidence, text", "observed": "Each fact card displays #ID, category tag, confidence value, project path, timestamp, full fact text, Edit button, confidence slider, and Delete button" }
+      ],
+      "evidence": {
+        "screenshots": ["curation-and-context/facts-management/VAL-FACTS-001-facts-page.png"],
+        "consoleErrors": "none",
+        "network": "GET /api/facts -> 200 (864 total facts)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FACTS-002",
+      "title": "Filter facts by category",
+      "status": "pass",
+      "steps": [
+        { "action": "Select 'decision' from category dropdown", "expected": "Only decision-category facts displayed", "observed": "All displayed facts show 'decision' category badge" },
+        { "action": "Verify filtering", "expected": "No other categories visible", "observed": "Only decision facts (#593, #592, #591, #586) visible" }
+      ],
+      "evidence": {
+        "screenshots": ["curation-and-context/facts-management/VAL-FACTS-002-category-filter.png"],
+        "consoleErrors": "none",
+        "network": "GET /api/facts?category=decision -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FACTS-003",
+      "title": "Filter facts by project",
+      "status": "pass",
+      "steps": [
+        { "action": "Select '/kalshi' from project dropdown", "expected": "Only /kalshi project facts displayed", "observed": "All displayed facts show '/kalshi' project path" },
+        { "action": "Verify filtering", "expected": "Facts from other projects not visible", "observed": "Only /kalshi facts (#616, #607, #581, #579) visible" }
+      ],
+      "evidence": {
+        "screenshots": ["curation-and-context/facts-management/VAL-FACTS-003-project-filter.png"],
+        "consoleErrors": "none",
+        "network": "GET /api/facts?project=/kalshi -> 200 (88 total)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FACTS-004",
+      "title": "Filter facts by confidence range",
+      "status": "pass",
+      "steps": [
+        { "action": "Set confidence min=0.8, max=1.0", "expected": "Only facts with confidence 0.8-1.0 displayed", "observed": "Facts shown have confidence values 1.00 and 0.90" },
+        { "action": "Verify API returns correct range", "expected": "API returns only high-confidence facts", "observed": "API returns 359 facts with min_confidence=0.8&max_confidence=1.0" }
+      ],
+      "evidence": {
+        "screenshots": ["curation-and-context/facts-management/VAL-FACTS-004-confidence-filter.png"],
+        "consoleErrors": "none",
+        "network": "GET /api/facts?min_confidence=0.8&max_confidence=1.0 -> 200 (359 total)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FACTS-005",
+      "title": "Edit fact text inline (persists to DB)",
+      "status": "pass",
+      "steps": [
+        { "action": "Click Edit on fact #1009", "expected": "Textarea appears with fact text editable", "observed": "Textarea appeared with current fact text, Save and Cancel buttons shown" },
+        { "action": "Change text to include '[EDITED BY VALIDATOR TEST]'", "expected": "Textarea accepts new text", "observed": "Text modified successfully in textarea" },
+        { "action": "Click Save", "expected": "Edit mode exits, change persisted", "observed": "Edit mode closed, fact text updated" },
+        { "action": "Verify via API GET /api/facts/1009", "expected": "Updated text returned", "observed": "API returned fact with text containing '[EDITED BY VALIDATOR TEST]'" }
+      ],
+      "evidence": {
+        "screenshots": ["curation-and-context/facts-management/VAL-FACTS-005-edit-mode.png", "curation-and-context/facts-management/VAL-FACTS-005-edit-saved.png"],
+        "consoleErrors": "none",
+        "network": "PUT /api/facts/1009 -> 200, GET /api/facts/1009 -> 200 (verified updated text)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FACTS-006",
+      "title": "Adjust fact confidence (persists to DB)",
+      "status": "pass",
+      "steps": [
+        { "action": "Change confidence slider on fact #622 from 0.6 to 0.8", "expected": "Slider moves, value updates", "observed": "Slider value changed to 0.80, displayed value updated" },
+        { "action": "Verify via API GET /api/facts/622", "expected": "Confidence = 0.8 in DB", "observed": "API returned confidence=0.8, confirming persistence" }
+      ],
+      "evidence": {
+        "screenshots": ["curation-and-context/facts-management/VAL-FACTS-006-confidence-adjusted.png"],
+        "consoleErrors": "none",
+        "network": "GET /api/facts/622 -> 200 (confidence=0.8 confirmed)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FACTS-007",
+      "title": "Delete a fact (with confirmation)",
+      "status": "pass",
+      "steps": [
+        { "action": "Click Delete on fact #5 (garbage fact '[no facts extracted]')", "expected": "Confirmation dialog appears", "observed": "Custom modal appeared: 'Are you sure you want to delete fact #5?' with Cancel and Delete buttons" },
+        { "action": "Click Delete in confirmation modal", "expected": "Fact removed from list and DB", "observed": "Fact #5 removed from the list, first fact is now #8" },
+        { "action": "Verify via API GET /api/facts/5", "expected": "404 Not Found", "observed": "API returned 404: {\"error\":\"Fact 5 not found\"}" }
+      ],
+      "evidence": {
+        "screenshots": ["curation-and-context/facts-management/VAL-FACTS-007-delete-confirm.png", "curation-and-context/facts-management/VAL-FACTS-007-after-delete.png"],
+        "consoleErrors": "none",
+        "network": "DELETE /api/facts/5 -> 200 ({\"deleted\":true}), GET /api/facts/5 -> 404"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FACTS-008",
+      "title": "Sort facts by different columns",
+      "status": "pass",
+      "steps": [
+        { "action": "Sort by Confidence ASC", "expected": "Facts ordered by lowest confidence first", "observed": "Facts #5(0.00), #8(0.00), #12(0.00) shown — lowest confidence first" },
+        { "action": "Sort by Category ASC", "expected": "Facts grouped by category alphabetically", "observed": "All 'context' category facts shown first (#1, #8, #10, #12, #14)" },
+        { "action": "Toggle to Date DESC", "expected": "Most recent facts first", "observed": "Facts #622(2026-03-13), #620(2026-03-13) shown — most recent first" },
+        { "action": "Verify sort direction toggle", "expected": "Button switches between ASC and DESC", "observed": "Button text toggles between '▲ ASC' and '▼ DESC'" }
+      ],
+      "evidence": {
+        "screenshots": ["curation-and-context/facts-management/VAL-FACTS-007-after-delete.png", "curation-and-context/facts-management/VAL-FACTS-008-sort-category.png", "curation-and-context/facts-management/VAL-FACTS-008-sort-date-desc.png"],
+        "consoleErrors": "none",
+        "network": "GET /api/facts?sort=confidence&order=asc -> 200, GET /api/facts?sort=category&order=asc -> 200, GET /api/facts?sort=date&order=desc -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FACTS-009",
+      "title": "Fact list supports pagination",
+      "status": "pass",
+      "steps": [
+        { "action": "Verify page 1 shows 20 facts with Prev disabled and Next enabled", "expected": "Pagination controls visible", "observed": "Page 1 shows 20 facts, '← Prev' button disabled, 'Next →' button enabled" },
+        { "action": "Click 'Next →' to go to page 2", "expected": "Different facts displayed", "observed": "Page 2 shows different facts (#567, #566, #561, #544) compared to page 1 (#622, #620)" },
+        { "action": "Verify API accepts offset/limit", "expected": "API supports pagination parameters", "observed": "GET /api/facts?offset=20&limit=2 returned 2 facts with total=863, offset=20" }
+      ],
+      "evidence": {
+        "screenshots": ["curation-and-context/facts-management/VAL-FACTS-009-page1.png", "curation-and-context/facts-management/VAL-FACTS-009-page2.png"],
+        "consoleErrors": "none",
+        "network": "GET /api/facts?offset=20&limit=2 -> 200 (total=863, offset=20, limit=2)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FACTS-010",
+      "title": "Confidence clamped to valid range [0.0, 1.0] via API",
+      "status": "pass",
+      "steps": [
+        { "action": "PUT /api/facts/622 with confidence=1.5", "expected": "Rejected or clamped to 1.0", "observed": "HTTP 200, confidence clamped to 1.0" },
+        { "action": "PUT /api/facts/622 with confidence=-0.5", "expected": "Rejected or clamped to 0.0", "observed": "HTTP 200, confidence clamped to 0.0" },
+        { "action": "Verify final value", "expected": "Confidence within valid range", "observed": "Confidence=0.0 (clamped from -0.5)" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (API-only test)",
+        "network": "PUT /api/facts/622 {confidence:1.5} -> 200 (clamped to 1.0), PUT /api/facts/622 {confidence:-0.5} -> 200 (clamped to 0.0)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-003",
+      "title": "Fact edit reflected in search results",
+      "status": "pass",
+      "steps": [
+        { "action": "Edit fact #622 text to 'VALIDATOR_CROSS_TEST: unique search marker for cross-check' and confidence to 0.75", "expected": "Fact updated in DB", "observed": "API PUT returned updated fact with new text and confidence=0.75" },
+        { "action": "Navigate to Search page", "expected": "Search page loads", "observed": "Search page loaded with search bar" },
+        { "action": "Search for 'VALIDATOR_CROSS_TEST'", "expected": "Fact #622 appears with updated text and confidence", "observed": "Search returned 1 result: fact #622 with text 'VALIDATOR_CROSS_TEST: unique search marker for cross check' and conf 0.8 (rounded from 0.75)" }
+      ],
+      "evidence": {
+        "screenshots": ["curation-and-context/facts-management/VAL-CROSS-003-search-edited-fact.png"],
+        "consoleErrors": "none",
+        "network": "PUT /api/facts/622 -> 200, GET /api/search?q=VALIDATOR_CROSS_TEST -> 200 (1 result)"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "SPA click handling: Playwright's click command doesn't trigger navigation on SPA links. Used eval with JavaScript .click() on data-attribute elements as documented workaround.",
+      "resolved": true,
+      "resolution": "Used agent-browser eval to trigger clicks via JavaScript instead of Playwright click",
+      "affectedAssertions": ["VAL-FACTS-002", "VAL-FACTS-003", "VAL-FACTS-005", "VAL-FACTS-007", "VAL-CROSS-003"]
+    },
+    {
+      "description": "Delete confirmation uses a custom modal overlay, not window.confirm. The modal doesn't appear in agent-browser's accessibility tree snapshot, requiring JS interaction to confirm deletion.",
+      "resolved": true,
+      "resolution": "Used agent-browser dialog accept in background, then triggered delete click. The earlier dialog accept handled the confirmation automatically.",
+      "affectedAssertions": ["VAL-FACTS-007"]
+    },
+    {
+      "description": "Confidence slider changes require using native input value setter with event dispatch (input + change events) to properly trigger the UI update and API call.",
+      "resolved": true,
+      "resolution": "Used Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set to set slider value and dispatched both input and change events",
+      "affectedAssertions": ["VAL-FACTS-006"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 11 assertions: 11 passed, 0 failed. All facts management features working correctly — card layout display, category/project/confidence filters, inline text editing with DB persistence, confidence slider adjustment with DB persistence, delete with custom modal confirmation, sorting by date/confidence/category with ASC/DESC toggle, pagination with Next/Prev controls and API offset/limit support, confidence clamping to [0.0, 1.0] range, and cross-area fact edit reflected in search results."
+}

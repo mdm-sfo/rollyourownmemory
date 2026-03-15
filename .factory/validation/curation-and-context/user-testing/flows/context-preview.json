@@ -1,0 +1,85 @@
+{
+  "groupId": "context-preview",
+  "testedAt": "2026-03-15T12:00:00Z",
+  "isolation": {
+    "appUrl": "http://localhost:8585",
+    "browserSession": "de0f9092ba74__context-preview",
+    "accessMode": "read-only"
+  },
+  "toolsUsed": ["agent-browser", "curl"],
+  "assertions": [
+    {
+      "id": "VAL-CONTEXT-001",
+      "title": "Preview shows inject.py output",
+      "status": "pass",
+      "steps": [
+        { "action": "curl -sf http://localhost:8585/api/context-preview?max_tokens=2000", "expected": "JSON with content and tokens_estimate", "observed": "JSON returned with content containing Key Facts, Recent Sessions, Active Stack sections; tokens_estimate=677" },
+        { "action": "Navigate to Context Preview section via nav link", "expected": "Context preview page loads with inject.py output", "observed": "Page shows Memory Context Preview heading, Token Budget slider (2000), Project filter (All Projects), Regenerate button, and ~677 tokens estimated" },
+        { "action": "Verify preview content matches inject.py --stdout", "expected": "Content shows Key Facts, Recent Sessions, Active Stack", "observed": "Content matches API output: Key Facts with tool/preference/context/decision categories, Recent Sessions, Active Stack sections visible" }
+      ],
+      "evidence": {
+        "screenshots": ["curation-and-context/context-preview/VAL-CONTEXT-001-context-preview.png"],
+        "consoleErrors": "none",
+        "network": "GET /api/context-preview?max_tokens=2000 -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONTEXT-002",
+      "title": "Token budget slider changes output",
+      "status": "pass",
+      "steps": [
+        { "action": "Set token budget slider to 500", "expected": "Preview regenerates with fewer tokens/sections", "observed": "Preview updated to ~437 tokens estimated (down from ~677 at 2000)" },
+        { "action": "Set token budget slider to 4000", "expected": "Preview regenerates with more tokens/sections", "observed": "Preview updated to ~677 tokens estimated (full content fits within 4000 budget)" },
+        { "action": "Compare content at different budget levels", "expected": "Lower budget shows less content, higher budget shows more", "observed": "Confirmed: 500 budget shows ~437 tokens (truncated content), 4000 budget shows ~677 tokens (full content)" }
+      ],
+      "evidence": {
+        "screenshots": ["curation-and-context/context-preview/VAL-CONTEXT-002-budget-500.png", "curation-and-context/context-preview/VAL-CONTEXT-002-budget-4000.png"],
+        "consoleErrors": "none",
+        "network": "GET /api/context-preview?max_tokens=500 -> 200, GET /api/context-preview?max_tokens=4000 -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONTEXT-003",
+      "title": "Project filter changes output",
+      "status": "pass",
+      "steps": [
+        { "action": "Select project filter: /home/ec2-user/projects/Kalshi", "expected": "Preview regenerates scoped to Kalshi project", "observed": "Preview title changed to '# Memory Context (/home/ec2-user/projects/Kalshi)', ~566 tokens estimated, content includes Kalshi-specific decision fact (Moved Ivanhoff Trading Bot)" },
+        { "action": "Verify project dropdown populated with real projects", "expected": "Dropdown shows multiple project options", "observed": "16 project options available from /api/projects endpoint, including Kalshi, ivanhoff-trading-bot, etc." }
+      ],
+      "evidence": {
+        "screenshots": ["curation-and-context/context-preview/VAL-CONTEXT-003-project-filter.png"],
+        "consoleErrors": "none",
+        "network": "GET /api/context-preview?max_tokens=4000&project=/home/ec2-user/projects/Kalshi -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONTEXT-004",
+      "title": "Regenerate button refreshes preview",
+      "status": "pass",
+      "steps": [
+        { "action": "Reset to All Projects filter", "expected": "Preview shows all-projects content", "observed": "Preview reset to all-projects view" },
+        { "action": "Click Regenerate button", "expected": "Preview refreshes with fresh inject.py output", "observed": "Preview refreshed successfully, showing ~677 tokens estimated with updated content" },
+        { "action": "Verify no console errors after regeneration", "expected": "No errors", "observed": "No console errors" }
+      ],
+      "evidence": {
+        "screenshots": ["curation-and-context/context-preview/VAL-CONTEXT-004-regenerate.png"],
+        "consoleErrors": "none",
+        "network": "GET /api/context-preview?max_tokens=4000 -> 200"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "SPA click handling: Playwright's click command times out on SPA nav links that use addEventListener. Used eval to trigger .click() via JavaScript on data-section elements and the regenerate button.",
+      "resolved": true,
+      "resolution": "Used agent-browser eval to call .click() directly on DOM elements",
+      "affectedAssertions": ["VAL-CONTEXT-001", "VAL-CONTEXT-004"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 4 assertions: 4 passed, 0 failed. Context preview correctly displays inject.py output, responds to token budget changes (437 tokens at 500 budget vs 677 at 2000+), filters by project, and refreshes on regenerate. No console errors observed."
+}

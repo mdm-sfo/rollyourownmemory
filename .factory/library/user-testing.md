@@ -35,11 +35,12 @@
 **Tool:** agent-browser (invoke via `Skill` tool with name `agent-browser`)
 **Session naming:** Use `--session "<worker-session-id>__<group-id>"` pattern
 
-### Isolation Rules
-- All validators operate **read-only** against the same FastAPI server and memory.db
-- No validator should modify data (no fact editing, no CLAUDE.md changes)
+### Isolation Rules (curation-and-context milestone)
+- **Fact mutations** (edit, delete, confidence changes) are grouped into ONE subagent to avoid conflicts
+- **CLAUDE.md mutations** are in a separate subagent — it backs up and restores the file
+- **Context preview** is read-only and safe to run in parallel
 - Each validator uses its own agent-browser session
-- No shared state conflicts expected — all search/inspect/session operations are read-only
+- All fact CRUD operations (VAL-FACTS-005/006/007, VAL-CROSS-003) must be in the same subagent
 
 ### Testing Approach
 - Use agent-browser to navigate to pages, fill search forms, click results

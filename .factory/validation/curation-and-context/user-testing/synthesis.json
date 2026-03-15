@@ -1,0 +1,42 @@
+{
+  "milestone": "curation-and-context",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 19,
+    "passed": 19,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-FACTS-001",
+    "VAL-FACTS-002",
+    "VAL-FACTS-003",
+    "VAL-FACTS-004",
+    "VAL-FACTS-005",
+    "VAL-FACTS-006",
+    "VAL-FACTS-007",
+    "VAL-FACTS-008",
+    "VAL-FACTS-009",
+    "VAL-FACTS-010",
+    "VAL-CLAUDE-001",
+    "VAL-CLAUDE-002",
+    "VAL-CLAUDE-003",
+    "VAL-CLAUDE-004",
+    "VAL-CONTEXT-001",
+    "VAL-CONTEXT-002",
+    "VAL-CONTEXT-003",
+    "VAL-CONTEXT-004",
+    "VAL-CROSS-003"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Updated Flow Validator Guidance: browser section with curation-and-context isolation rules (fact mutations grouped, CLAUDE.md mutations isolated, context preview read-only)",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null
+}
