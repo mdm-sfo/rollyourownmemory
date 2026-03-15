@@ -1,7 +1,7 @@
 {
   "milestone": "features",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -21,117 +21,19 @@
     }
   },
   "reviewsSummary": {
-    "total": 6,
-    "passed": 5,
-    "failed": 1,
-    "failedFeatures": ["fact-decay"]
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "fact-decay",
-      "severity": "blocking",
-      "description": "Parameter ordering bug in src/curate.py line 86-87: the 'e' (edit) case has SQL `UPDATE facts SET fact = ?, confidence = 1.0, last_validated = ? WHERE id = ?` with parameters `(now, new_text, r['id'])`. The `now` and `new_text` values are swapped — `fact` gets the timestamp and `last_validated` gets the user's text. Correct order: `(new_text, now, r['id'])`.",
-      "file": "src/curate.py",
-      "line": 87,
-      "fix": "Change `(now, new_text, r[\"id\"])` to `(new_text, now, r[\"id\"])` on the parameter tuple."
-    }
-  ],
-  "nonBlockingIssues": [
-    {
-      "featureId": "faiss-index",
-      "description": "Brute-force fallback path doesn't over-fetch like FAISS path, so temporal decay reranking is less effective than original inline approach."
-    },
-    {
-      "featureId": "faiss-index",
-      "description": "Corrupted FAISS index files (memory.faiss, memory_ids.json) would crash search_similar() instead of gracefully falling back to brute-force."
-    },
-    {
-      "featureId": "faiss-index",
-      "description": "update_faiss_index() rebuilds existing_ids set from full id_map on every call — minor scalability concern at large scale."
-    },
-    {
-      "featureId": "fact-deduplication",
-      "description": "Missing return type annotations on 3 private helper functions (_get_dedup_model, _compute_embedding, _load_existing_fact_embeddings) per AGENTS.md convention."
-    },
-    {
-      "featureId": "fact-deduplication",
-      "description": "Hardcoded '(similarity >0.85)' in stderr log message doesn't derive from function's threshold parameter."
-    },
-    {
-      "featureId": "fact-deduplication",
-      "description": "dedup_facts() lacks try/finally for database connection cleanup."
-    },
-    {
-      "featureId": "fact-deduplication",
-      "description": "store_facts() recomputes embeddings for ALL existing facts on every invocation — performance concern at scale."
-    },
-    {
-      "featureId": "fact-decay",
-      "description": "curate.py add_fact_interactive() doesn't set last_validated on insert, creating inconsistency with MCP tool path."
-    },
-    {
-      "featureId": "fact-decay",
-      "description": "Decay threshold uses `days_old > 90` (strictly greater) vs spec's '90+ days' (typically >=90). Off by one day."
-    },
-    {
-      "featureId": "processed-messages",
-      "description": "Migration DDL for processed_messages lacks REFERENCES messages(id) that schema.sql has — minor inconsistency."
-    },
-    {
-      "featureId": "processed-messages",
-      "description": "distill.py inherits limit=50 default from shared get_session_messages() — original local function had no limit. Sessions >50 messages may lose facts from later messages."
-    },
-    {
-      "featureId": "processed-messages",
-      "description": "entities.py 'stats' subcommand still counts via entity_mentions instead of processed_messages — count now excludes processed-but-no-entities messages."
-    },
-    {
-      "featureId": "processed-messages",
-      "description": "Leftover 'AND id > 0' / 'AND entity_id > 0' guards are dead code artifacts of old sentinel pattern."
-    },
-    {
-      "featureId": "model-config",
-      "description": "Default model value 'llama3.3:70b' duplicated in 3 places (extract_facts_llm, distill, argparse) — could use module constant."
-    },
-    {
-      "featureId": "model-config",
-      "description": "README example uses default model value in --model flag, which is slightly redundant as documentation."
-    }
-  ],
-  "appliedUpdates": [
-    {
-      "target": "library",
-      "description": "Updated architecture.md to document distill.py's new cross-module dependency on embed.py for fact deduplication (sentence-transformers).",
-      "sourceFeature": "fact-deduplication"
-    }
-  ],
-  "suggestedGuidanceUpdates": [
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Update 'Key Architecture Notes' to remove the statement that 'The processed_messages table and last_validated column are added via migrations, not in schema.sql base schema'. Both are now in schema.sql as of the features milestone. schema.sql represents the current complete schema, with migrations handling upgrades for existing databases.",
-      "evidence": "Features fact-decay and processed-messages both added their DDL to schema.sql as required by their feature descriptions. Two independent reviewers flagged the stale AGENTS.md statement.",
-      "isSystemic": true
-    },
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Add guidance that shared query functions with default limits (e.g., get_session_messages limit=50) should be called with explicit limits in batch processing contexts where truncation could lose data.",
-      "evidence": "Feature processed-messages introduced a subtle regression: distill.py calls shared get_session_messages() without specifying a limit, inheriting 50 where the original local function had no limit. Long sessions (>50 messages) may have incomplete fact extraction.",
-      "isSystemic": false
-    }
-  ],
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [],
   "rejectedObservations": [
     {
-      "observation": "Brute-force search path temporal decay changed from pre-selection to post-selection without documentation.",
-      "reason": "This is a code-level implementation detail, not shared state. Best addressed as a code comment, not in library/ or AGENTS.md."
-    },
-    {
-      "observation": "AGENTS.md convention about type hints could be clarified for private helpers.",
-      "reason": "The existing 'Type hints on ALL new functions' is clear enough. Private helpers ARE functions. A separate carve-out would weaken the convention without clear benefit."
-    },
-    {
-      "observation": "AGENTS.md error handling convention and inject.py implementation are now aligned.",
-      "reason": "Informational only — no action needed. The convention was already correct."
+      "observation": "Worker correctly updated AGENTS.md to fix the stale schema.sql note. The updated text accurately reflects that processed_messages and last_validated exist in both schema.sql and migrate_schema().",
+      "reason": "Informational only — the fix worker already applied this AGENTS.md update as part of the fix feature. No further action needed."
     }
   ],
-  "previousRound": null
+  "previousRound": ".factory/validation/features/scrutiny/synthesis.json (round 1)"
 }

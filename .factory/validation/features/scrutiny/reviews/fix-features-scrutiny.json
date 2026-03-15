@@ -1,0 +1,21 @@
+{
+  "featureId": "fix-features-scrutiny",
+  "reviewedAt": "2026-03-15T07:20:00Z",
+  "commitId": "234cf46b3848a83081e4d0732f5c27d3fc438d37",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "All 5 fixes from the scrutiny synthesis have been correctly implemented. The blocking parameter-ordering bug in curate.py is fixed, and all 4 non-blocking issues (distill.py limit, FAISS graceful fallback, add_fact last_validated, AGENTS.md stale note) are properly addressed. The diff touches exactly 3 repo files (curate.py, distill.py, embed.py) plus the mission AGENTS.md. Changes are surgical and minimal — no unnecessary refactoring or scope creep.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Worker correctly updated AGENTS.md to fix the stale schema.sql note, as required by the feature description. The updated text accurately reflects that processed_messages and last_validated exist in both schema.sql and migrate_schema().",
+      "evidence": "AGENTS.md now reads: 'The processed_messages table and last_validated column exist in both schema.sql (for fresh installs) and in memory_db.py migrate_schema() (for upgrading existing databases).' — matches reality."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/features/scrutiny/reviews/fact-decay.json",
+  "summary": "Fix feature passes. All 5 issues from the scrutiny synthesis are properly addressed: (1) BLOCKING curate.py edit parameter swap from (now, new_text, r['id']) to (new_text, now, r['id']) — verified correct at line 87. (2) distill.py now passes limit=10000 to get_session_messages — verified at line 431. (3) FAISS index loading in both update_faiss_index and _search_faiss is wrapped in try/except with graceful fallback (new index creation or return None respectively) — verified in embed.py. (4) curate.py add_fact_interactive now sets last_validated=now on INSERT — verified at line 127. (5) AGENTS.md stale note about schema.sql updated to reflect current reality. The worker followed the python-worker skill procedure, read all affected files, made surgical edits, and ran appropriate verification commands."
+}
