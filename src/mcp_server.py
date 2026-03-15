@@ -307,6 +307,136 @@ def memory_inspect(fact_id: int) -> str:
 
 
 @mcp.tool()
+def memory_deep_recall(query: str, synthesize: bool = True, limit: int = 10,
+                       project: Optional[str] = None) -> str:
+    """Deep recall: search across facts AND messages, gather full context, and optionally
+    synthesize an answer using the local LLM. Use this when memory_search_facts finds
+    relevant facts but you need the complete picture.
+
+    Args:
+        query: What you want to recall (natural language)
+        synthesize: If True, use local LLM to synthesize a coherent answer from retrieved context (default True)
+        limit: Max source messages to retrieve (default 10)
+        project: Filter by project name substring
+    """
+    conn = get_conn()
+
+    # Step 1: Find relevant facts
+    fact_lines = []
+    try:
+        sql = """
+            SELECT f.fact, f.category, f.session_id, f.compressed_details
+            FROM facts_fts
+            JOIN facts f ON f.id = facts_fts.rowid
+            WHERE facts_fts MATCH ? AND f.confidence > 0
+            ORDER BY f.confidence DESC LIMIT 5
+        """
+        fact_rows = conn.execute(sql, (query,)).fetchall()
+        for r in fact_rows:
+            compressed = ""
+            try:
+                cd = r["compressed_details"]
+                if cd and cd.strip() and cd.strip() != "none":
+                    compressed = f" (compressed: {cd})"
+            except (IndexError, KeyError):
+                pass
+            fact_lines.append(f"- [{r['category']}] {r['fact']}{compressed}")
+    except sqlite3.OperationalError:
+        pass
+
+    # Step 2: Find relevant messages via FTS
+    msg_lines = []
+    try:
+        sql = """
+            SELECT m.content, m.role, m.timestamp, m.project, m.session_id
+            FROM messages_fts
+            JOIN messages m ON m.id = messages_fts.rowid
+            WHERE messages_fts MATCH ?
+        """
+        params: list = [query]
+        if project:
+            sql += " AND m.project LIKE ?"
+            params.append(f"%{project}%")
+        sql += " ORDER BY messages_fts.rank LIMIT ?"
+        params.append(limit)
+
+        msg_rows = conn.execute(sql, params).fetchall()
+        for r in msg_rows:
+            ts = (r["timestamp"] or "")[:16]
+            proj = r["project"] or "no-project"
+            content = r["content"][:600] + "..." if len(r["content"]) > 600 else r["content"]
+            msg_lines.append(f"[{ts}] {proj} ({r['role']}): {content}")
+    except sqlite3.OperationalError:
+        pass
+
+    conn.close()
+
+    if not fact_lines and not msg_lines:
+        return f"No memories found for \"{query}\""
+
+    # Step 3: Optionally synthesize with local LLM
+    if synthesize and (fact_lines or msg_lines):
+        try:
+            import httpx
+
+            context_parts = []
+            if fact_lines:
+                context_parts.append("EXTRACTED FACTS:\n" + "\n".join(fact_lines))
+            if msg_lines:
+                context_parts.append("SOURCE MESSAGES:\n" + "\n".join(msg_lines[:8]))
+
+            context = "\n\n".join(context_parts)
+
+            synth_prompt = (
+                f'Based on the following memory context, provide a concise, accurate '
+                f'answer to this question: "{query}"\n\n'
+                f'{context}\n\n'
+                f'Rules:\n'
+                f'- Only state things supported by the context above\n'
+                f'- If the context is insufficient, say what you found and what\'s missing\n'
+                f'- Be concise — this answer will be used as context in another conversation\n'
+                f'- Include specific details (file paths, commands, config values) when available'
+            )
+
+            resp = httpx.post(
+                "http://localhost:11434/v1/chat/completions",
+                json={
+                    "model": "llama3.3:70b",
+                    "messages": [{"role": "user", "content": synth_prompt}],
+                    "temperature": 0.1,
+                },
+                timeout=120,
+            )
+            resp.raise_for_status()
+            synthesis = resp.json()["choices"][0]["message"]["content"]
+
+            result_parts = [f"## Deep Recall: \"{query}\"\n", synthesis, ""]
+            if fact_lines:
+                result_parts.append("### Supporting Facts")
+                result_parts.extend(fact_lines)
+            result_parts.append(f"\n### Source Messages ({len(msg_lines)} found)")
+            for ml in msg_lines[:5]:
+                result_parts.append(ml)
+
+            return "\n".join(result_parts)
+
+        except Exception:
+            # LLM unavailable — fall through to raw results
+            pass
+
+    # Fallback: return raw results without synthesis
+    result_parts = [f"## Deep Recall: \"{query}\" (raw — LLM synthesis unavailable)\n"]
+    if fact_lines:
+        result_parts.append("### Extracted Facts")
+        result_parts.extend(fact_lines)
+    if msg_lines:
+        result_parts.append("\n### Source Messages")
+        result_parts.extend(msg_lines)
+
+    return "\n".join(result_parts)
+
+
+@mcp.tool()
 def memory_find_entity(name: str) -> str:
     """Find what sessions and contexts mention a specific tool, library, service, or concept.
 
