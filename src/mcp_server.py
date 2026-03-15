@@ -173,7 +173,7 @@ def memory_search_facts(query: str, category: Optional[str] = None,
 
     Args:
         query: Search terms
-        category: Filter by category: preference, decision, learning, context, tool, pattern
+        category: Filter by category: preference, decision, learning, context, tool, pattern, error, solution
         limit: Max results (default 10)
     """
     conn = get_conn()
@@ -189,9 +189,16 @@ def memory_search_facts(query: str, category: Optional[str] = None,
 
     lines = []
     for r in rows:
-        lines.append(f"[{r['category']}] (conf={r['confidence']:.1f}) {r['fact']}")
+        compressed = ""
+        try:
+            cd = r["compressed_details"]
+            if cd and cd.strip() and cd.strip() != "none":
+                compressed = f" [details compressed: {cd}]"
+        except (IndexError, KeyError):
+            pass
+        lines.append(f"[#{r['id']}] [{r['category']}] (conf={r['confidence']:.1f}) {r['fact']}{compressed}")
 
-    return f"Facts matching \"{query}\":\n\n" + "\n".join(lines)
+    return f"Facts matching \"{query}\" (use memory_inspect for details, memory_feedback to correct):\n\n" + "\n".join(lines)
 
 
 @mcp.tool()
@@ -204,7 +211,7 @@ def memory_add_fact(fact: str, category: str, project: Optional[str] = None) -> 
         category: One of: preference, decision, learning, context, tool, pattern
         project: Optional project this fact relates to
     """
-    valid = {"preference", "decision", "learning", "context", "tool", "pattern"}
+    valid = {"preference", "decision", "learning", "context", "tool", "pattern", "error", "solution"}
     if category not in valid:
         return f"Invalid category. Must be one of: {', '.join(sorted(valid))}"
 
@@ -214,6 +221,89 @@ def memory_add_fact(fact: str, category: str, project: Optional[str] = None) -> 
                last_validated=now)
     conn.close()
     return f"Stored fact: [{category}] {fact}"
+
+
+@mcp.tool()
+def memory_inspect(fact_id: int) -> str:
+    """Inspect a specific fact with full context: source message, sibling facts from the same session, and related entities.
+
+    Use this after memory_search_facts returns a relevant fact but you need more detail.
+    The compressed_details field tells you what specifics were omitted during extraction.
+
+    Args:
+        fact_id: The fact ID from memory_search_facts results
+    """
+    conn = get_conn()
+
+    # Get the fact
+    fact = conn.execute("SELECT * FROM facts WHERE id = ?", (fact_id,)).fetchone()
+    if not fact:
+        conn.close()
+        return f"No fact found with id {fact_id}"
+
+    lines = [
+        f"## Fact #{fact['id']}",
+        f"**Category**: {fact['category']}",
+        f"**Confidence**: {fact['confidence']:.1f}",
+        f"**Project**: {fact['project'] or 'general'}",
+        f"**Extracted**: {(fact['timestamp'] or 'unknown')[:16]}",
+        f"**Fact**: {fact['fact']}",
+    ]
+
+    # Show compressed details if present (handle missing column gracefully)
+    try:
+        compressed = fact["compressed_details"]
+        if compressed and compressed.strip() and compressed.strip() != "none":
+            lines.append(f"**Details compressed**: {compressed}")
+            lines.append("(Use memory_search or memory_get_session to recover these details)")
+    except (IndexError, KeyError):
+        pass
+
+    # Get source message if available
+    session_id = fact["session_id"]
+    if fact["source_message_id"]:
+        msg = conn.execute(
+            "SELECT * FROM messages WHERE id = ?", (fact["source_message_id"],)
+        ).fetchone()
+        if msg:
+            lines.append("")
+            lines.append("## Source Message")
+            ts = (msg["timestamp"] or "")[:16].replace("T", " ")
+            content = msg["content"][:800] + "..." if len(msg["content"]) > 800 else msg["content"]
+            lines.append(f"[{ts}] ({msg['role']}) {content}")
+
+            # Prefer session_id from message for sibling lookup
+            session_id = msg["session_id"] or session_id
+
+    # Get sibling facts from the same session
+    if session_id:
+        siblings = conn.execute(
+            "SELECT id, fact, category, confidence FROM facts WHERE session_id = ? AND id != ? AND confidence > 0 ORDER BY id",
+            (session_id, fact_id),
+        ).fetchall()
+        if siblings:
+            lines.append("")
+            lines.append("## Other Facts from Same Session")
+            for s in siblings[:10]:
+                lines.append(f"- [#{s['id']}] [{s['category']}] {s['fact']}")
+
+    # Get related entities mentioned in the same session
+    if session_id:
+        entities = conn.execute("""
+            SELECT DISTINCT e.name, e.entity_type, e.mention_count
+            FROM entity_mentions em
+            JOIN entities e ON e.id = em.entity_id
+            WHERE em.session_id = ? AND e.id > 0
+            ORDER BY e.mention_count DESC LIMIT 10
+        """, (session_id,)).fetchall()
+        if entities:
+            lines.append("")
+            lines.append("## Entities from Same Session")
+            for e in entities:
+                lines.append(f"- {e['name']} ({e['entity_type']}, {e['mention_count']}x total)")
+
+    conn.close()
+    return "\n".join(lines)
 
 
 @mcp.tool()
