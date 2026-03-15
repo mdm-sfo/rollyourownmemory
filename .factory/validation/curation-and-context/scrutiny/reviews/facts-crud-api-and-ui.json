@@ -1,0 +1,51 @@
+{
+  "featureId": "facts-crud-api-and-ui",
+  "reviewedAt": "2026-03-15T17:30:00.000Z",
+  "commitId": "d7b24a2357b167d481be27df66f3cc5860283c2d",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation is complete and correct. All three CRUD endpoints (GET list, PUT update, DELETE) are implemented with proper parameterized SQL queries, confidence clamping, 404 handling, pagination, and filtering. Frontend provides full curation UI with card layout, inline edit, confidence slider, delete confirmation modal, filters (category/project/confidence), sort controls, and pagination. XSS prevention via escapeHtml() is thorough. 38 new tests cover happy paths, edge cases (clamping, empty body, offset beyond total), and integration (search propagation). No SQL injection vectors — sort field uses allowlist, sort order is hardcoded binary, all WHERE clause values use parameterized queries.",
+    "issues": [
+      {
+        "file": "src/web.py",
+        "line": 397,
+        "severity": "non_blocking",
+        "description": "Connection leak potential: list_facts, update_fact, and delete_fact endpoints all use conn = memory_db.get_conn() / conn.close() without try/finally. If an exception occurs between open and close (e.g., JSONDecodeError in update_fact's request.json()), the connection won't be properly closed. Consider using a context manager or try/finally pattern."
+      },
+      {
+        "file": "static/app.js",
+        "line": 1524,
+        "severity": "non_blocking",
+        "description": "populateFactsProjectFilter() fetches 200 facts to extract unique project names. If more than 200 facts exist with different projects distributed beyond the first 200 results, some projects will be missing from the dropdown. A dedicated /api/projects endpoint or DISTINCT SQL query would be more robust."
+      },
+      {
+        "file": "src/web.py",
+        "line": 412,
+        "severity": "non_blocking",
+        "description": "Project filter uses LIKE '%{project}%' (contains match) while the UI dropdown shows exact project names. If project names overlap (e.g., 'memory' matching 'memory-context'), unexpected results may appear. An exact match (= ?) would better match the dropdown UI behavior."
+      },
+      {
+        "file": "static/app.js",
+        "line": 1173,
+        "severity": "non_blocking",
+        "description": "Redundant double escaping: data-fact-text attribute applies escapeHtml() then .replace(/\"/g, '&quot;'). Since escapeHtml already converts '\"' to '&quot;', the additional replace is a no-op. Harmless but unnecessary."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The existing endpoints in web.py (e.g., list_sessions, get_fact) also use bare conn = get_conn() / conn.close() without try/finally, so the lack of context managers is a pre-existing pattern in the codebase, not unique to this feature. However, AGENTS.md doesn't document this pattern or recommend against it.",
+      "evidence": "src/web.py lines 397, 467, 529 — all three new endpoints follow the same pattern as existing endpoints (e.g., line 545 get_fact uses the same bare open/close pattern)."
+    },
+    {
+      "area": "conventions",
+      "observation": "The project filter uses LIKE (contains) while category uses exact match (=). This inconsistency is established in the existing search endpoint at line 80, so the worker was following existing convention. AGENTS.md doesn't document this design choice.",
+      "evidence": "src/web.py line 80 existing search: 'm.project LIKE ?' with %project%, line 412 new: 'f.project LIKE ?' with %project%. Category uses exact '=' at line 408."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The facts CRUD feature is well-implemented with comprehensive test coverage (38 new tests, 129 total passing). Backend endpoints correctly implement GET /api/facts with pagination/filtering/sorting, PUT /api/facts/{id} with confidence clamping to [0,1], and DELETE /api/facts/{id} with 404 handling. Frontend provides a full curation UI with category/project/confidence filters, sort controls, inline edit, confidence slider, delete confirmation dialog, and pagination. All user content is HTML-escaped. SQL queries use parameterized values and sort field allowlisting. Four non-blocking issues noted: connection leak potential (pre-existing pattern), project dropdown population strategy, LIKE vs exact match for project filter (pre-existing convention), and redundant string escaping. The worker followed the skill procedure correctly (TDD red-green, manual curl verification, service cleanup). No AGENTS.md violations."
+}

@@ -1,0 +1,54 @@
+{
+  "milestone": "curation-and-context",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": ".venv/bin/python -m pytest tests/ -v",
+      "exitCode": 0,
+      "details": "166 tests passed in 28.82s"
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "N/A - no typecheck tool configured",
+      "exitCode": 0,
+      "details": "No mypy/pyright installed; py_compile syntax check on all 11 Python source files passed"
+    },
+    "lint": {
+      "passed": true,
+      "command": "N/A - no lint tool configured",
+      "exitCode": 0,
+      "details": "No ruff/flake8/pylint installed; py_compile syntax check on all Python files passed"
+    }
+  },
+  "reviewsSummary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Clarify the 'HTML escaping is mandatory' convention for markdown rendering contexts. Add guidance like: 'For markdown preview/rendering, escape HTML entities in source text before applying markdown transformations. Fenced code blocks should always use escapeHtml(). Inline content (headings, paragraphs, list items) should have non-markdown HTML tags escaped to prevent XSS.'",
+      "evidence": "Feature claude-md-editor's renderInline() function in static/app.js applies regex markdown transformations without first escaping HTML. Only fenced code blocks call escapeHtml(). This creates a theoretical XSS vector in the CLAUDE.md preview. Both reviewers flagged this pattern.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Document the DB connection pattern used in web.py: endpoints use bare conn = memory_db.get_conn() / conn.close() without try/finally. Consider recommending a context manager pattern for new code to prevent connection leaks on exceptions, while acknowledging the existing pattern.",
+      "evidence": "Feature facts-crud-api-and-ui added 3 new endpoints following the existing bare open/close pattern from pre-existing endpoints. Reviewer noted connection leak potential if exceptions occur between open and close.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Project filter uses LIKE (contains) while category uses exact match (=). This inconsistency is established in the existing search endpoint.",
+      "reason": "This is a pre-existing design choice that was already established before this milestone. The new code correctly follows the existing convention. Documenting it would be low value — it's a minor implementation detail, not a pattern that causes confusion across features."
+    }
+  ],
+  "previousRound": null
+}
