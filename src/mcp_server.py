@@ -437,6 +437,115 @@ def memory_deep_recall(query: str, synthesize: bool = True, limit: int = 10,
 
 
 @mcp.tool()
+def memory_resume_context(project: Optional[str] = None, session_id: Optional[str] = None) -> str:
+    """Resume context from a previous session. Returns the last session's key messages,
+    recent decisions, and what was being worked on. Use this when the user says
+    "pick up where I left off" or "continue from last time."
+
+    Args:
+        project: Filter by project name substring (optional)
+        session_id: Specific session ID to resume from (optional, defaults to most recent)
+    """
+    conn = get_conn()
+
+    # Find the target session
+    if session_id:
+        target_session = session_id
+    else:
+        sql = "SELECT DISTINCT session_id, MAX(timestamp) as last_ts FROM messages WHERE session_id IS NOT NULL"
+        params: list = []
+        if project:
+            sql += " AND project LIKE ?"
+            params.append(f"%{project}%")
+        sql += " GROUP BY session_id ORDER BY last_ts DESC LIMIT 1"
+        row = conn.execute(sql, params).fetchone()
+        if not row:
+            conn.close()
+            return "No previous sessions found" + (f" for project matching '{project}'" if project else "") + ". Start a conversation first, then use this tool to resume context in future sessions."
+        target_session = row["session_id"]
+
+    lines = ["## Resume Context\n"]
+
+    # Get session messages (last N user and assistant messages)
+    messages = conn.execute(
+        """SELECT role, content, timestamp, project FROM messages
+           WHERE session_id = ? AND role IN ('user', 'assistant')
+           ORDER BY timestamp DESC LIMIT 20""",
+        (target_session,)
+    ).fetchall()
+
+    if messages:
+        proj = messages[0]["project"] or "unknown"
+        first_ts = (messages[-1]["timestamp"] or "")[:16]
+        last_ts = (messages[0]["timestamp"] or "")[:16]
+        lines.append(f"**Project**: {proj}")
+        lines.append(f"**Session**: {target_session[:12]}...")
+        lines.append(f"**Time range**: {first_ts} → {last_ts}")
+        lines.append("")
+
+        # Show last few user messages as "what was being discussed"
+        user_msgs = [m for m in messages if m["role"] == "user"]
+        lines.append("### Last User Messages")
+        for m in reversed(user_msgs[:5]):
+            ts = (m["timestamp"] or "")[:16].replace("T", " ")
+            content = m["content"][:300] + "..." if len(m["content"]) > 300 else m["content"]
+            lines.append(f"- [{ts}] {content}")
+        lines.append("")
+
+    # Get facts from this session
+    facts = conn.execute(
+        """SELECT fact, category, compressed_details FROM facts
+           WHERE session_id = ? AND confidence > 0
+           ORDER BY id""",
+        (target_session,)
+    ).fetchall()
+
+    if facts:
+        lines.append("### Decisions & Findings from This Session")
+        for f in facts:
+            compressed = ""
+            try:
+                cd = f["compressed_details"]
+                if cd and cd.strip() and cd.strip() != "none":
+                    compressed = f" (details: {cd})"
+            except (IndexError, KeyError):
+                pass
+            lines.append(f"- [{f['category']}] {f['fact']}{compressed}")
+        lines.append("")
+
+    # Get entities from this session
+    entities = conn.execute("""
+        SELECT DISTINCT e.name, e.entity_type
+        FROM entity_mentions em
+        JOIN entities e ON e.id = em.entity_id
+        WHERE em.session_id = ? AND e.id > 0
+        ORDER BY e.mention_count DESC LIMIT 15
+    """, (target_session,)).fetchall()
+
+    if entities:
+        lines.append("### Entities in Play")
+        for e in entities:
+            lines.append(f"- {e['name']} ({e['entity_type']})")
+        lines.append("")
+
+    # Get most recent facts across all sessions for broader context
+    recent_facts = conn.execute(
+        """SELECT fact, category FROM facts
+           WHERE confidence > 0 AND session_id != ?
+           ORDER BY timestamp DESC LIMIT 5""",
+        (target_session,)
+    ).fetchall()
+
+    if recent_facts:
+        lines.append("### Recent Facts from Other Sessions")
+        for f in recent_facts:
+            lines.append(f"- [{f['category']}] {f['fact']}")
+
+    conn.close()
+    return "\n".join(lines)
+
+
+@mcp.tool()
 def memory_find_entity(name: str) -> str:
     """Find what sessions and contexts mention a specific tool, library, service, or concept.
 
