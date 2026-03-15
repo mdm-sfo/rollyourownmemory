@@ -116,10 +116,18 @@ def extract_facts_heuristic(session_messages):
     return facts
 
 
-def extract_facts_llm(session_messages, api_base=None, model: str = "llama3.3:70b"):
+def extract_facts_llm(session_messages, api_base=None, model: str = "llama3.3:70b",
+                      existing_facts=None):
     """Extract facts using a local LLM via OpenAI-compatible API.
 
     Works with ollama, vllm, llama.cpp server, or any OpenAI-compatible endpoint.
+
+    Args:
+        session_messages: List of message dicts from a session.
+        api_base: OpenAI-compatible API base URL.
+        model: LLM model name (default: llama3.3:70b).
+        existing_facts: Optional list of fact strings already extracted — the LLM
+            will be instructed not to re-extract these.
     """
     try:
         import httpx
@@ -135,6 +143,16 @@ def extract_facts_llm(session_messages, api_base=None, model: str = "llama3.3:70
     conversation = "\n".join(
         f"[{m['role']}] {m['content'][:2000]}" for m in session_messages[:100]
     )
+
+    existing_context = ""
+    if existing_facts:
+        facts_list = "\n".join(f"- {f}" for f in existing_facts[:30])
+        existing_context = f"""
+ALREADY KNOWN FACTS (do NOT re-extract these or minor variations of them):
+{facts_list}
+
+Only extract facts that are GENUINELY NEW information not covered above.
+"""
 
     prompt = f"""You are analyzing a conversation between a user and an AI coding assistant. Extract ONLY durable, reusable facts — things that would be valuable to know in future sessions.
 
@@ -153,8 +171,13 @@ Do NOT extract:
 - Conversational filler
 - Facts about the AI assistant itself
 - Anything only relevant to this one session
+{existing_context}
+Return a JSON array of objects with these keys:
+- "fact": concise statement of the durable fact
+- "category": one of the categories above
+- "compressed_details": comma-separated list of specifics you omitted from the fact (e.g. "exact config values, error message text, specific file paths"). If nothing was omitted, use "none".
 
-Return a JSON array of objects with "fact" and "category" keys. Be highly selective — 3-8 facts max per conversation. If nothing is worth extracting, return an empty array [].
+Be highly selective — 3-8 facts max per conversation. If nothing new is worth extracting, return an empty array [].
 
 Conversation:
 {conversation[:24000]}
@@ -183,6 +206,7 @@ Return ONLY a JSON array, no other text."""
                     facts.append({
                         "fact": f["fact"][:500],
                         "category": f["category"],
+                        "compressed_details": f.get("compressed_details", "")[:500],
                         "confidence": 0.9,
                         "source_message_id": user_msgs[0]["id"],
                         "session_id": user_msgs[0].get("session_id"),
@@ -424,6 +448,12 @@ def distill(use_llm=False, api_base=None, limit=None, model: str = "llama3.3:70b
         conn.close()
         return
 
+    # Load existing facts for dedup context
+    existing_facts_rows = conn.execute(
+        "SELECT fact FROM facts WHERE confidence > 0 ORDER BY timestamp DESC LIMIT 50"
+    ).fetchall()
+    existing_facts = [r[0] for r in existing_facts_rows]
+
     print(f"Distilling {len(sessions)} sessions...")
     total_facts = 0
 
@@ -441,7 +471,8 @@ def distill(use_llm=False, api_base=None, limit=None, model: str = "llama3.3:70b
         facts = extract_facts_heuristic(messages)
 
         if use_llm:
-            llm_facts = extract_facts_llm(messages, api_base, model=model)
+            llm_facts = extract_facts_llm(messages, api_base, model=model,
+                                          existing_facts=existing_facts)
             facts.extend(llm_facts)
 
         if facts:
