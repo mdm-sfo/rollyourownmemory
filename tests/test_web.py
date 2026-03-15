@@ -4,6 +4,7 @@ Tests cover:
 - Scaffold endpoints (health, static files, error handlers)
 - Search API (FTS messages, facts, sessions, semantic fallback)
 - Fact inspect endpoint
+- Facts CRUD (list, update, delete)
 - Session list and detail endpoints
 - Ask mode SSE streaming endpoint
 """
@@ -86,6 +87,41 @@ def seeded_db(tmp_path):
 
 
 @pytest.fixture
+def facts_db(tmp_path):
+    """Create a DB with many facts for pagination / CRUD testing."""
+    db_path = tmp_path / "facts_memory.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript(SCHEMA_PATH.read_text())
+
+    # Insert a message for source reference
+    conn.execute(
+        "INSERT INTO messages (id, source_file, session_id, project, role, content, timestamp, machine) "
+        "VALUES (1, 'test.jsonl', 'sess-001', 'kalshi', 'user', 'test message', '2024-01-15T10:00:00', 'laptop')"
+    )
+
+    categories = ['preference', 'decision', 'learning', 'context', 'tool', 'pattern']
+    projects = ['kalshi', 'memory', 'webapp']
+
+    for i in range(1, 16):
+        cat = categories[i % len(categories)]
+        proj = projects[i % len(projects)]
+        conf = round(0.1 + (i % 10) * 0.1, 1)  # 0.2..1.0 cycling
+        ts = f"2024-01-{15 + (i % 5):02d}T{10 + i:02d}:00:00"
+        conn.execute(
+            "INSERT INTO facts (id, session_id, project, fact, category, confidence, "
+            "source_message_id, timestamp, compressed_details) "
+            f"VALUES ({i}, 'sess-001', '{proj}', 'Test fact number {i} about {cat}', "
+            f"'{cat}', {conf}, 1, '{ts}', NULL)"
+        )
+
+    conn.execute("INSERT INTO facts_fts(facts_fts) VALUES('rebuild')")
+    conn.execute("INSERT INTO messages_fts(messages_fts) VALUES('rebuild')")
+    conn.commit()
+    conn.close()
+    return str(db_path)
+
+
+@pytest.fixture
 def client(web_db):
     """Create a FastAPI TestClient with patched DB path (empty DB)."""
     with patch("src.memory_db.DB_PATH", web_db):
@@ -98,6 +134,15 @@ def client(web_db):
 def seeded_client(seeded_db):
     """Create a FastAPI TestClient with seeded test data."""
     with patch("src.memory_db.DB_PATH", seeded_db):
+        from src.web import app
+        with TestClient(app) as c:
+            yield c
+
+
+@pytest.fixture
+def facts_client(facts_db):
+    """Create a FastAPI TestClient with many facts for CRUD testing."""
+    with patch("src.memory_db.DB_PATH", facts_db):
         from src.web import app
         with TestClient(app) as c:
             yield c
@@ -820,3 +865,356 @@ class TestSearchTypeParam:
         js = resp.text
         assert "type=" in js
         assert "include-semantic" in js
+
+
+# --- Facts CRUD API Tests ---
+
+class TestFactsListEndpoint:
+    """Tests for GET /api/facts — paginated list with filters."""
+
+    def test_list_facts_returns_structure(self, facts_client):
+        """GET /api/facts returns {facts, total, offset, limit}."""
+        resp = facts_client.get("/api/facts")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "facts" in data
+        assert "total" in data
+        assert "offset" in data
+        assert "limit" in data
+        assert isinstance(data["facts"], list)
+        assert isinstance(data["total"], int)
+
+    def test_list_facts_default_pagination(self, facts_client):
+        """Default: offset=0, limit=50."""
+        resp = facts_client.get("/api/facts")
+        data = resp.json()
+        assert data["offset"] == 0
+        assert data["limit"] == 50
+        assert data["total"] == 15
+
+    def test_list_facts_custom_pagination(self, facts_client):
+        """Custom offset/limit narrows results."""
+        resp = facts_client.get("/api/facts?offset=5&limit=3")
+        data = resp.json()
+        assert len(data["facts"]) == 3
+        assert data["offset"] == 5
+        assert data["limit"] == 3
+        assert data["total"] == 15
+
+    def test_list_facts_offset_beyond_total(self, facts_client):
+        """Offset beyond total returns empty list but correct total."""
+        resp = facts_client.get("/api/facts?offset=100")
+        data = resp.json()
+        assert data["facts"] == []
+        assert data["total"] == 15
+
+    def test_list_facts_fact_structure(self, facts_client):
+        """Each fact has expected fields."""
+        resp = facts_client.get("/api/facts?limit=1")
+        data = resp.json()
+        assert len(data["facts"]) == 1
+        fact = data["facts"][0]
+        assert "id" in fact
+        assert "fact" in fact
+        assert "category" in fact
+        assert "confidence" in fact
+        assert "project" in fact
+        assert "timestamp" in fact
+        assert "compressed_details" in fact
+
+    def test_list_facts_filter_by_category(self, facts_client):
+        """Category filter narrows results."""
+        resp = facts_client.get("/api/facts?category=tool")
+        data = resp.json()
+        assert data["total"] > 0
+        for f in data["facts"]:
+            assert f["category"] == "tool"
+
+    def test_list_facts_filter_by_project(self, facts_client):
+        """Project filter narrows results."""
+        resp = facts_client.get("/api/facts?project=kalshi")
+        data = resp.json()
+        assert data["total"] > 0
+        for f in data["facts"]:
+            assert "kalshi" in (f["project"] or "").lower()
+
+    def test_list_facts_filter_by_min_confidence(self, facts_client):
+        """min_confidence filter works."""
+        resp = facts_client.get("/api/facts?min_confidence=0.8")
+        data = resp.json()
+        for f in data["facts"]:
+            assert f["confidence"] >= 0.8
+
+    def test_list_facts_filter_by_max_confidence(self, facts_client):
+        """max_confidence filter works."""
+        resp = facts_client.get("/api/facts?max_confidence=0.5")
+        data = resp.json()
+        for f in data["facts"]:
+            assert f["confidence"] <= 0.5
+
+    def test_list_facts_filter_confidence_range(self, facts_client):
+        """Combined min/max confidence filters work."""
+        resp = facts_client.get("/api/facts?min_confidence=0.3&max_confidence=0.7")
+        data = resp.json()
+        for f in data["facts"]:
+            assert 0.3 <= f["confidence"] <= 0.7
+
+    def test_list_facts_sort_by_confidence(self, facts_client):
+        """Sort by confidence ascending."""
+        resp = facts_client.get("/api/facts?sort=confidence&order=asc")
+        data = resp.json()
+        confs = [f["confidence"] for f in data["facts"]]
+        assert confs == sorted(confs)
+
+    def test_list_facts_sort_by_confidence_desc(self, facts_client):
+        """Sort by confidence descending."""
+        resp = facts_client.get("/api/facts?sort=confidence&order=desc")
+        data = resp.json()
+        confs = [f["confidence"] for f in data["facts"]]
+        assert confs == sorted(confs, reverse=True)
+
+    def test_list_facts_sort_by_category(self, facts_client):
+        """Sort by category."""
+        resp = facts_client.get("/api/facts?sort=category&order=asc")
+        data = resp.json()
+        cats = [f["category"] for f in data["facts"]]
+        assert cats == sorted(cats)
+
+    def test_list_facts_default_sort_timestamp_desc(self, facts_client):
+        """Default sort is timestamp DESC."""
+        resp = facts_client.get("/api/facts")
+        data = resp.json()
+        timestamps = [f["timestamp"] for f in data["facts"]]
+        assert timestamps == sorted(timestamps, reverse=True)
+
+    def test_list_facts_returns_json(self, facts_client):
+        """Endpoint returns JSON content type."""
+        resp = facts_client.get("/api/facts")
+        assert "application/json" in resp.headers["content-type"]
+
+
+class TestFactUpdateEndpoint:
+    """Tests for PUT /api/facts/{id} — update fact text/confidence."""
+
+    def test_update_fact_text(self, facts_client):
+        """Update fact text via PUT."""
+        resp = facts_client.put(
+            "/api/facts/1",
+            json={"fact": "Updated fact text"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["fact"] == "Updated fact text"
+        assert data["id"] == 1
+
+    def test_update_fact_confidence(self, facts_client):
+        """Update fact confidence via PUT."""
+        resp = facts_client.put(
+            "/api/facts/1",
+            json={"confidence": 0.75}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["confidence"] == 0.75
+
+    def test_update_fact_both_fields(self, facts_client):
+        """Update both fact text and confidence."""
+        resp = facts_client.put(
+            "/api/facts/1",
+            json={"fact": "New text", "confidence": 0.5}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["fact"] == "New text"
+        assert data["confidence"] == 0.5
+
+    def test_update_fact_clamps_high_confidence(self, facts_client):
+        """Confidence > 1.0 is clamped to 1.0."""
+        resp = facts_client.put(
+            "/api/facts/1",
+            json={"confidence": 2.0}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["confidence"] == 1.0
+
+    def test_update_fact_clamps_low_confidence(self, facts_client):
+        """Confidence < 0.0 is clamped to 0.0."""
+        resp = facts_client.put(
+            "/api/facts/1",
+            json={"confidence": -0.5}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["confidence"] == 0.0
+
+    def test_update_fact_clamps_zero(self, facts_client):
+        """Confidence 0.0 is valid and kept."""
+        resp = facts_client.put(
+            "/api/facts/1",
+            json={"confidence": 0.0}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["confidence"] == 0.0
+
+    def test_update_fact_clamps_one(self, facts_client):
+        """Confidence 1.0 is valid and kept."""
+        resp = facts_client.put(
+            "/api/facts/1",
+            json={"confidence": 1.0}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["confidence"] == 1.0
+
+    def test_update_fact_not_found(self, facts_client):
+        """PUT non-existent fact returns 404."""
+        resp = facts_client.put(
+            "/api/facts/999999",
+            json={"fact": "Updated text"}
+        )
+        assert resp.status_code == 404
+        data = resp.json()
+        assert "error" in data
+
+    def test_update_fact_persists(self, facts_client):
+        """Updated fact is persisted (verify via GET inspect)."""
+        facts_client.put("/api/facts/1", json={"fact": "Persisted update"})
+        resp = facts_client.get("/api/facts/1")
+        data = resp.json()
+        assert data["fact"] == "Persisted update"
+
+    def test_update_empty_body(self, facts_client):
+        """PUT with empty body returns the fact unchanged (no error)."""
+        resp = facts_client.put("/api/facts/1", json={})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] == 1
+
+    def test_update_returns_full_fact(self, facts_client):
+        """PUT returns the full fact object with all fields."""
+        resp = facts_client.put(
+            "/api/facts/1",
+            json={"fact": "Full return test"}
+        )
+        data = resp.json()
+        assert "id" in data
+        assert "fact" in data
+        assert "category" in data
+        assert "confidence" in data
+        assert "project" in data
+        assert "timestamp" in data
+
+
+class TestFactDeleteEndpoint:
+    """Tests for DELETE /api/facts/{id} — delete a fact."""
+
+    def test_delete_fact(self, facts_client):
+        """DELETE returns {deleted: true}."""
+        resp = facts_client.delete("/api/facts/1")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["deleted"] is True
+
+    def test_delete_fact_removes_it(self, facts_client):
+        """Deleted fact is gone from DB."""
+        facts_client.delete("/api/facts/1")
+        resp = facts_client.get("/api/facts/1")
+        assert resp.status_code == 404
+
+    def test_delete_fact_not_found(self, facts_client):
+        """DELETE non-existent fact returns 404."""
+        resp = facts_client.delete("/api/facts/999999")
+        assert resp.status_code == 404
+        data = resp.json()
+        assert "error" in data
+
+    def test_delete_reduces_total(self, facts_client):
+        """After deleting a fact, total count decreases."""
+        resp = facts_client.get("/api/facts")
+        original_total = resp.json()["total"]
+
+        facts_client.delete("/api/facts/1")
+
+        resp = facts_client.get("/api/facts")
+        new_total = resp.json()["total"]
+        assert new_total == original_total - 1
+
+    def test_delete_fact_not_in_list(self, facts_client):
+        """Deleted fact does not appear in list."""
+        facts_client.delete("/api/facts/1")
+        resp = facts_client.get("/api/facts?limit=50")
+        data = resp.json()
+        ids = [f["id"] for f in data["facts"]]
+        assert 1 not in ids
+
+
+class TestFactsCRUDIntegration:
+    """Integration tests: edit reflected in search, etc."""
+
+    def test_edit_reflected_in_search(self, seeded_client):
+        """Editing a fact's text is reflected when searching for it."""
+        # First update the fact
+        resp = seeded_client.put(
+            "/api/facts/1",
+            json={"fact": "Kalshi uses kubernetes for deployment"}
+        )
+        assert resp.status_code == 200
+
+        # Now search should find the updated text
+        resp = seeded_client.get("/api/search?q=kubernetes")
+        data = resp.json()
+        found = any("kubernetes" in f.get("fact", "").lower() for f in data["facts"])
+        assert found
+
+    def test_delete_removes_from_search(self, seeded_client):
+        """Deleting a fact removes it from search results."""
+        # Delete fact 3
+        resp = seeded_client.delete("/api/facts/3")
+        assert resp.status_code == 200
+
+        # Search for it — it should be gone
+        resp = seeded_client.get("/api/search?q=SQLite+FTS5")
+        data = resp.json()
+        fact_ids = [f["id"] for f in data["facts"]]
+        assert 3 not in fact_ids
+
+
+class TestFactsFrontend:
+    """Tests for Facts page frontend elements."""
+
+    def test_html_has_facts_section(self, client):
+        """HTML has a facts section."""
+        resp = client.get("/")
+        html = resp.text
+        assert 'id="section-facts"' in html
+
+    def test_html_has_facts_filters(self, client):
+        """HTML has filter controls for category, project, confidence."""
+        resp = client.get("/")
+        html = resp.text
+        assert "category" in html.lower()
+        assert "confidence" in html.lower()
+
+    def test_js_has_facts_crud_functions(self, client):
+        """app.js has functions for loading, editing, deleting facts."""
+        resp = client.get("/static/app.js")
+        js = resp.text
+        assert "loadFacts" in js or "fetchFacts" in js or "/api/facts" in js
+        assert "DELETE" in js
+        assert "PUT" in js
+
+    def test_js_has_pagination(self, client):
+        """app.js has pagination controls."""
+        resp = client.get("/static/app.js")
+        js = resp.text
+        assert "offset" in js
+        assert "limit" in js
+
+    def test_js_escapes_fact_content(self, client):
+        """app.js uses escapeHtml for fact content rendering."""
+        resp = client.get("/static/app.js")
+        js = resp.text
+        # Should use escapeHtml extensively in facts rendering
+        assert "escapeHtml" in js

@@ -383,6 +383,161 @@ async def ask(
     )
 
 
+@app.get("/api/facts")
+async def list_facts(
+    category: Optional[str] = Query(None, description="Filter by category"),
+    project: Optional[str] = Query(None, description="Filter by project"),
+    min_confidence: Optional[float] = Query(None, ge=0.0, le=1.0, description="Minimum confidence"),
+    max_confidence: Optional[float] = Query(None, ge=0.0, le=1.0, description="Maximum confidence"),
+    sort: str = Query("timestamp", description="Sort field: timestamp, confidence, category"),
+    order: str = Query("desc", description="Sort order: asc or desc"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    limit: int = Query(50, ge=1, le=200, description="Page size"),
+):
+    """List facts with filters, sorting, and pagination."""
+    conn = memory_db.get_conn()
+
+    # Build query with filters
+    where_clauses = ["1=1"]
+    params = []
+
+    if category:
+        where_clauses.append("f.category = ?")
+        params.append(category)
+    if project:
+        where_clauses.append("f.project LIKE ?")
+        params.append(f"%{project}%")
+    if min_confidence is not None:
+        where_clauses.append("f.confidence >= ?")
+        params.append(min_confidence)
+    if max_confidence is not None:
+        where_clauses.append("f.confidence <= ?")
+        params.append(max_confidence)
+
+    where_sql = " AND ".join(where_clauses)
+
+    # Count total matching facts
+    count_sql = f"SELECT COUNT(*) FROM facts f WHERE {where_sql}"
+    total = conn.execute(count_sql, params).fetchone()[0]
+
+    # Validate sort field
+    allowed_sorts = {"timestamp": "f.timestamp", "confidence": "f.confidence", "category": "f.category"}
+    sort_col = allowed_sorts.get(sort, "f.timestamp")
+    sort_order = "ASC" if order.lower() == "asc" else "DESC"
+
+    # Query with pagination
+    data_sql = f"""
+        SELECT f.id, f.fact, f.category, f.confidence, f.project,
+               f.timestamp, f.compressed_details
+        FROM facts f
+        WHERE {where_sql}
+        ORDER BY {sort_col} {sort_order}
+        LIMIT ? OFFSET ?
+    """
+    rows = conn.execute(data_sql, params + [limit, offset]).fetchall()
+
+    facts = []
+    for r in rows:
+        cd = None
+        try:
+            raw_cd = r["compressed_details"]
+            if raw_cd and raw_cd.strip() and raw_cd.strip() != "none":
+                cd = raw_cd
+        except (IndexError, KeyError):
+            pass
+
+        facts.append({
+            "id": r["id"],
+            "fact": r["fact"],
+            "category": r["category"],
+            "confidence": r["confidence"],
+            "project": r["project"],
+            "timestamp": r["timestamp"],
+            "compressed_details": cd,
+        })
+
+    conn.close()
+    return {"facts": facts, "total": total, "offset": offset, "limit": limit}
+
+
+@app.put("/api/facts/{fact_id}")
+async def update_fact(fact_id: int, request: Request):
+    """Update a fact's text and/or confidence. Confidence is clamped to [0.0, 1.0]."""
+    body = await request.json()
+    conn = memory_db.get_conn()
+
+    # Check fact exists
+    fact = conn.execute("SELECT * FROM facts WHERE id = ?", (fact_id,)).fetchone()
+    if not fact:
+        conn.close()
+        return JSONResponse(
+            status_code=404,
+            content={"error": f"Fact {fact_id} not found"},
+        )
+
+    # Build update fields
+    updates = []
+    params = []
+
+    if "fact" in body:
+        updates.append("fact = ?")
+        params.append(body["fact"])
+
+    if "confidence" in body:
+        # Clamp confidence to [0.0, 1.0]
+        conf = max(0.0, min(1.0, float(body["confidence"])))
+        updates.append("confidence = ?")
+        params.append(conf)
+
+    if updates:
+        sql = f"UPDATE facts SET {', '.join(updates)} WHERE id = ?"
+        params.append(fact_id)
+        conn.execute(sql, params)
+        conn.commit()
+
+    # Return the updated fact
+    updated = conn.execute("SELECT * FROM facts WHERE id = ?", (fact_id,)).fetchone()
+    cd = None
+    try:
+        raw_cd = updated["compressed_details"]
+        if raw_cd and raw_cd.strip() and raw_cd.strip() != "none":
+            cd = raw_cd
+    except (IndexError, KeyError):
+        pass
+
+    result = {
+        "id": updated["id"],
+        "fact": updated["fact"],
+        "category": updated["category"],
+        "confidence": updated["confidence"],
+        "project": updated["project"],
+        "timestamp": updated["timestamp"],
+        "compressed_details": cd,
+    }
+    conn.close()
+    return result
+
+
+@app.delete("/api/facts/{fact_id}")
+async def delete_fact(fact_id: int):
+    """Delete a fact by ID."""
+    conn = memory_db.get_conn()
+
+    # Check fact exists
+    fact = conn.execute("SELECT id FROM facts WHERE id = ?", (fact_id,)).fetchone()
+    if not fact:
+        conn.close()
+        return JSONResponse(
+            status_code=404,
+            content={"error": f"Fact {fact_id} not found"},
+        )
+
+    conn.execute("DELETE FROM facts WHERE id = ?", (fact_id,))
+    conn.commit()
+    conn.close()
+    return {"deleted": True}
+
+
 @app.get("/api/facts/{fact_id}")
 async def get_fact(fact_id: int):
     """Fact inspect endpoint — returns fact details, source message, siblings, entities."""

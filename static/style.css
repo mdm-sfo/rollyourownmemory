@@ -513,6 +513,281 @@ body {
     cursor: pointer;
 }
 
+/* Facts management */
+.facts-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.facts-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.facts-sort {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.filter-select {
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+    background: var(--bg-card);
+    color: var(--text);
+    outline: none;
+}
+
+.filter-select:focus {
+    border-color: var(--primary);
+}
+
+.filter-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.confidence-filter {
+    display: flex;
+    gap: 0.3rem;
+    align-items: center;
+}
+
+.confidence-input {
+    width: 60px;
+    padding: 0.4rem 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+    outline: none;
+    text-align: center;
+}
+
+.confidence-input:focus {
+    border-color: var(--primary);
+}
+
+.btn-sort {
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+}
+
+.btn-sort:hover {
+    background: var(--bg);
+    color: var(--text);
+}
+
+/* Fact card in curation view */
+.fact-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.5rem;
+    box-shadow: var(--shadow);
+    transition: border-color 0.15s;
+}
+
+.fact-card:hover {
+    border-color: var(--primary);
+}
+
+.fact-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.fact-card-text {
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin-bottom: 0.5rem;
+}
+
+.fact-card-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.fact-edit-textarea {
+    width: 100%;
+    min-height: 60px;
+    padding: 0.5rem;
+    border: 1px solid var(--primary);
+    border-radius: var(--radius);
+    font-size: 0.9rem;
+    font-family: inherit;
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+    margin-bottom: 0.5rem;
+}
+
+.confidence-slider-container {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.confidence-slider {
+    width: 80px;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+
+.confidence-value {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    min-width: 32px;
+}
+
+.btn-edit {
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-card);
+    color: var(--primary);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.btn-edit:hover {
+    background: var(--bg);
+}
+
+.btn-save {
+    padding: 0.25rem 0.5rem;
+    border: none;
+    border-radius: 4px;
+    background: var(--success);
+    color: #fff;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.btn-save:hover {
+    background: #25a645;
+}
+
+.btn-cancel {
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-card);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.btn-delete {
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--error);
+    border-radius: 4px;
+    background: var(--bg-card);
+    color: var(--error);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.btn-delete:hover {
+    background: var(--error);
+    color: #fff;
+}
+
+/* Pagination */
+.facts-pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding: 0.75rem;
+}
+
+.pagination-info {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.btn-page {
+    padding: 0.4rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+    color: var(--text);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.btn-page:hover:not(:disabled) {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+}
+
+.btn-page:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Confirm dialog overlay */
+.confirm-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+}
+
+.confirm-dialog {
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-lg);
+    max-width: 400px;
+    width: 90%;
+}
+
+.confirm-dialog p {
+    margin-bottom: 1rem;
+    font-size: 0.95rem;
+}
+
+.confirm-dialog-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+
 /* Responsive */
 @media (max-width: 640px) {
     .nav-bar {
