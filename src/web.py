@@ -3,16 +3,22 @@
 Entry point: uvicorn src.web:app --host 0.0.0.0 --port 8585
 """
 
+import json
 import sqlite3
 import time
 from pathlib import Path
 from typing import Optional
 
+import httpx
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from src import memory_db
+
+# LLM settings
+OLLAMA_BASE_URL = "http://localhost:11434"
+OLLAMA_MODEL = "llama3.3:70b"
 
 # Paths
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -209,6 +215,163 @@ async def search(
         "timing_ms": elapsed,
         "query": query,
     }
+
+
+def _gather_ask_context(query, project=None):
+    """Gather facts and messages for LLM synthesis (similar to memory_deep_recall)."""
+    conn = memory_db.get_conn()
+
+    # Search facts via FTS
+    facts = []
+    try:
+        rows = memory_db.search_facts_fts(conn, query, project=project, limit=5)
+        for r in rows:
+            facts.append({
+                "id": r["id"],
+                "fact": r["fact"],
+                "category": r.get("category"),
+                "confidence": r.get("confidence"),
+                "compressed_details": r.get("compressed_details"),
+            })
+    except sqlite3.OperationalError:
+        pass
+
+    # Search messages via FTS
+    messages = []
+    try:
+        rows = memory_db.search_fts(conn, query, project=project, limit=10)
+        for r in rows:
+            messages.append({
+                "id": r["id"],
+                "session_id": r.get("session_id"),
+                "project": r.get("project"),
+                "role": r.get("role"),
+                "content": _truncate(r.get("content", ""), 600),
+                "timestamp": r.get("timestamp"),
+            })
+    except sqlite3.OperationalError:
+        pass
+
+    conn.close()
+    return facts, messages
+
+
+def _build_synthesis_prompt(query, facts, messages):
+    """Build the LLM prompt from gathered context."""
+    context_parts = []
+
+    if facts:
+        fact_lines = []
+        for f in facts:
+            compressed = ""
+            cd = f.get("compressed_details")
+            if cd and cd.strip() and cd.strip() != "none":
+                compressed = f" (compressed: {cd})"
+            fact_lines.append(f"- [{f.get('category', '?')}] {f['fact']}{compressed}")
+        context_parts.append("EXTRACTED FACTS:\n" + "\n".join(fact_lines))
+
+    if messages:
+        msg_lines = []
+        for m in messages[:8]:
+            ts = (m.get("timestamp") or "")[:16]
+            proj = m.get("project") or "no-project"
+            msg_lines.append(f"[{ts}] {proj} ({m.get('role', '?')}): {m['content']}")
+        context_parts.append("SOURCE MESSAGES:\n" + "\n".join(msg_lines))
+
+    context = "\n\n".join(context_parts)
+
+    return (
+        f'Based on the following memory context, provide a concise, accurate '
+        f'answer to this question: "{query}"\n\n'
+        f'{context}\n\n'
+        f'Rules:\n'
+        f'- Only state things supported by the context above\n'
+        f'- If the context is insufficient, say what you found and what\'s missing\n'
+        f'- Be concise — this answer will be used as context in another conversation\n'
+        f'- Include specific details (file paths, commands, config values) when available'
+    )
+
+
+@app.get("/api/ask")
+async def ask(
+    q: str = Query("", description="Ask query"),
+    project: Optional[str] = Query(None, description="Filter by project"),
+):
+    """Ask mode: streaming LLM synthesis via ollama with SSE."""
+
+    async def event_stream():
+        query = q.strip()
+        if not query:
+            yield "event: error\ndata: Please enter a question.\n\n"
+            return
+
+        # Gather context from memory
+        facts, messages = _gather_ask_context(query, project=project)
+
+        if not facts and not messages:
+            yield "event: error\ndata: No relevant memories found for your question.\n\n"
+            return
+
+        # Build the synthesis prompt
+        prompt = _build_synthesis_prompt(query, facts, messages)
+
+        # Stream from ollama
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                async with client.stream(
+                    "POST",
+                    f"{OLLAMA_BASE_URL}/api/generate",
+                    json={
+                        "model": OLLAMA_MODEL,
+                        "prompt": prompt,
+                        "stream": True,
+                    },
+                ) as response:
+                    async for line in response.aiter_lines():
+                        if not line.strip():
+                            continue
+                        try:
+                            chunk = json.loads(line)
+                            token = chunk.get("response", "")
+                            if token:
+                                yield f"event: token\ndata: {token}\n\n"
+                            if chunk.get("done", False):
+                                break
+                        except json.JSONDecodeError:
+                            continue
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.TimeoutException, OSError) as exc:
+            yield f"event: error\ndata: LLM service unavailable. Could not connect to ollama. ({type(exc).__name__})\n\n"
+            return
+        except Exception as exc:
+            yield f"event: error\ndata: LLM error: {type(exc).__name__}\n\n"
+            return
+
+        # Send sources as a final event
+        sources_data = json.dumps({
+            "facts": facts,
+            "messages": [
+                {
+                    "id": m["id"],
+                    "project": m.get("project"),
+                    "role": m.get("role"),
+                    "content": _truncate(m.get("content", ""), 200),
+                    "timestamp": m.get("timestamp"),
+                }
+                for m in messages[:5]
+            ],
+        })
+        yield f"event: sources\ndata: {sources_data}\n\n"
+        yield "event: done\ndata: \n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.get("/api/facts/{fact_id}")

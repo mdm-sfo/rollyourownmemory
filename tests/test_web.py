@@ -5,11 +5,13 @@ Tests cover:
 - Search API (FTS messages, facts, sessions, semantic fallback)
 - Fact inspect endpoint
 - Session list and detail endpoints
+- Ask mode SSE streaming endpoint
 """
 
+import json
 import sqlite3
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock, AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -498,3 +500,260 @@ class TestFrontendXSS:
         js = resp.text
         # Check that escapeHtml is called in rendering functions
         assert js.count("escapeHtml") > 5  # Used multiple times
+
+
+# --- Ask Mode SSE Endpoint Tests ---
+
+class TestAskEndpoint:
+    """Tests for GET /api/ask — SSE streaming with LLM synthesis."""
+
+    def _parse_sse_events(self, response_text):
+        """Parse SSE text into list of (event_type, data) tuples."""
+        events = []
+        current_event = None
+        current_data = []
+        for line in response_text.split("\n"):
+            if line.startswith("event: "):
+                current_event = line[7:].strip()
+            elif line.startswith("data: "):
+                current_data.append(line[6:])
+            elif line.strip() == "" and (current_event or current_data):
+                data = "\n".join(current_data)
+                events.append((current_event or "message", data))
+                current_event = None
+                current_data = []
+        # Handle trailing event without blank line
+        if current_event or current_data:
+            data = "\n".join(current_data)
+            events.append((current_event or "message", data))
+        return events
+
+    def test_ask_returns_sse_content_type(self, seeded_client):
+        """Ask endpoint returns text/event-stream content type."""
+        with patch("src.web.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            # Mock streaming response (ollama /api/generate format)
+            mock_response = AsyncMock()
+            mock_response.status_code = 200
+
+            async def mock_aiter():
+                yield '{"response":"Hello","done":false}'
+                yield '{"response":" world","done":false}'
+                yield '{"response":"","done":true}'
+
+            mock_response.aiter_lines = mock_aiter
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=False)
+            mock_client.stream = MagicMock(return_value=mock_response)
+
+            resp = seeded_client.get("/api/ask?q=kalshi")
+            assert resp.status_code == 200
+            assert "text/event-stream" in resp.headers["content-type"]
+
+    def test_ask_empty_query_returns_error(self, seeded_client):
+        """Empty query returns an error SSE event."""
+        resp = seeded_client.get("/api/ask?q=")
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.headers["content-type"]
+        events = self._parse_sse_events(resp.text)
+        # Should have an error event
+        error_events = [e for e in events if e[0] == "error"]
+        assert len(error_events) > 0
+
+    def test_ask_ollama_unavailable_returns_error(self, seeded_client):
+        """When ollama is unavailable, returns an error SSE event, not crash."""
+        import httpx as real_httpx
+        with patch("src.web.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            # Simulate connection error
+            mock_response = AsyncMock()
+            mock_response.__aenter__ = AsyncMock(
+                side_effect=real_httpx.ConnectError("Connection refused")
+            )
+            mock_response.__aexit__ = AsyncMock(return_value=False)
+            mock_client.stream = MagicMock(return_value=mock_response)
+
+            resp = seeded_client.get("/api/ask?q=kalshi")
+            assert resp.status_code == 200
+            events = self._parse_sse_events(resp.text)
+            error_events = [e for e in events if e[0] == "error"]
+            assert len(error_events) > 0
+            # Check error message mentions unavailability
+            assert any("unavailable" in e[1].lower() or "connect" in e[1].lower()
+                       for e in error_events)
+
+    def test_ask_includes_sources_event(self, seeded_client):
+        """After streaming completes, a sources event with citations is sent."""
+        with patch("src.web.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            mock_response = AsyncMock()
+            mock_response.status_code = 200
+
+            async def mock_aiter():
+                yield '{"response":"Hello","done":false}'
+                yield '{"response":"","done":true}'
+
+            mock_response.aiter_lines = mock_aiter
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=False)
+            mock_client.stream = MagicMock(return_value=mock_response)
+
+            resp = seeded_client.get("/api/ask?q=kalshi")
+            assert resp.status_code == 200
+            events = self._parse_sse_events(resp.text)
+            # Should have a sources event
+            source_events = [e for e in events if e[0] == "sources"]
+            assert len(source_events) > 0
+            # Sources should be valid JSON with facts and messages
+            sources_data = json.loads(source_events[0][1])
+            assert "facts" in sources_data
+            assert "messages" in sources_data
+
+    def test_ask_sources_contain_fact_ids(self, seeded_client):
+        """Sources event facts contain IDs for linking to inspect view."""
+        with patch("src.web.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            mock_response = AsyncMock()
+            mock_response.status_code = 200
+
+            async def mock_aiter():
+                yield '{"response":"Test","done":false}'
+                yield '{"response":"","done":true}'
+
+            mock_response.aiter_lines = mock_aiter
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=False)
+            mock_client.stream = MagicMock(return_value=mock_response)
+
+            resp = seeded_client.get("/api/ask?q=kalshi")
+            events = self._parse_sse_events(resp.text)
+            source_events = [e for e in events if e[0] == "sources"]
+            assert len(source_events) > 0
+            sources_data = json.loads(source_events[0][1])
+            # Facts should have id fields for linking
+            if sources_data["facts"]:
+                assert "id" in sources_data["facts"][0]
+
+    def test_ask_sends_done_event(self, seeded_client):
+        """Ask endpoint sends a done event when stream completes."""
+        with patch("src.web.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            mock_response = AsyncMock()
+            mock_response.status_code = 200
+
+            async def mock_aiter():
+                yield '{"response":"Test","done":false}'
+                yield '{"response":"","done":true}'
+
+            mock_response.aiter_lines = mock_aiter
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=False)
+            mock_client.stream = MagicMock(return_value=mock_response)
+
+            resp = seeded_client.get("/api/ask?q=kalshi")
+            events = self._parse_sse_events(resp.text)
+            done_events = [e for e in events if e[0] == "done"]
+            assert len(done_events) > 0
+
+    def test_ask_streams_token_events(self, seeded_client):
+        """Ask endpoint sends individual token events during streaming."""
+        with patch("src.web.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            mock_response = AsyncMock()
+            mock_response.status_code = 200
+
+            async def mock_aiter():
+                yield '{"response":"Hello","done":false}'
+                yield '{"response":" world","done":false}'
+                yield '{"response":"","done":true}'
+
+            mock_response.aiter_lines = mock_aiter
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=False)
+            mock_client.stream = MagicMock(return_value=mock_response)
+
+            resp = seeded_client.get("/api/ask?q=kalshi")
+            events = self._parse_sse_events(resp.text)
+            token_events = [e for e in events if e[0] == "token"]
+            assert len(token_events) >= 2
+            # First token should be "Hello"
+            assert token_events[0][1] == "Hello"
+            assert token_events[1][1] == " world"
+
+    def test_ask_project_filter(self, seeded_client):
+        """Ask endpoint accepts project filter."""
+        with patch("src.web.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            mock_response = AsyncMock()
+            mock_response.status_code = 200
+
+            async def mock_aiter():
+                yield '{"response":"Test","done":false}'
+                yield '{"response":"","done":true}'
+
+            mock_response.aiter_lines = mock_aiter
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=False)
+            mock_client.stream = MagicMock(return_value=mock_response)
+
+            resp = seeded_client.get("/api/ask?q=deploy&project=kalshi")
+            assert resp.status_code == 200
+            assert "text/event-stream" in resp.headers["content-type"]
+
+
+class TestAskFrontend:
+    """Tests for Ask mode frontend integration."""
+
+    def test_html_has_ask_mode_tab(self, client):
+        """HTML page has Ask mode toggle tab."""
+        resp = client.get("/")
+        html = resp.text
+        assert 'data-mode="ask"' in html
+        assert "Ask" in html
+
+    def test_js_handles_ask_mode(self, client):
+        """app.js has code to handle Ask mode submission."""
+        resp = client.get("/static/app.js")
+        js = resp.text
+        assert "/api/ask" in js
+        assert "EventSource" in js or "getReader" in js or "event-stream" in js.lower()
+
+    def test_js_renders_citations(self, client):
+        """app.js has code to render source citations."""
+        resp = client.get("/static/app.js")
+        js = resp.text
+        assert "sources" in js.lower() or "citation" in js.lower()
+
+    def test_js_has_loading_indicator(self, client):
+        """app.js shows a loading indicator for Ask mode."""
+        resp = client.get("/static/app.js")
+        js = resp.text
+        assert "loading" in js.lower() or "waiting" in js.lower() or "Thinking" in js
+
+    def test_js_citation_links_to_fact_inspect(self, client):
+        """app.js creates clickable links for fact citations to inspect view."""
+        resp = client.get("/static/app.js")
+        js = resp.text
+        # Should contain fact-id linking or showFactInspect for citations
+        assert "showFactInspect" in js or "fact-id" in js or "data-fact-id" in js

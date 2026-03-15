@@ -93,6 +93,9 @@
     var searchBtn = document.getElementById("search-btn");
     var resultsContainer = document.getElementById("search-results");
 
+    // --- Ask mode state ---
+    var askAbortController = null;
+
     function handleSearch() {
         var query = searchInput ? searchInput.value.trim() : "";
         if (!query) {
@@ -104,6 +107,13 @@
         }
 
         lastSearchQuery = query;
+
+        // Route to Ask mode if active
+        if (currentMode === "ask") {
+            handleAsk(query);
+            return;
+        }
+
         if (resultsContainer) {
             resultsContainer.innerHTML =
                 '<div class="empty-state">Searching...</div>';
@@ -125,6 +135,259 @@
                         "</div>";
                 }
             });
+    }
+
+    // --- Ask mode: streaming LLM synthesis via SSE ---
+
+    function handleAsk(query) {
+        if (!resultsContainer) return;
+
+        // Abort any previous ask stream
+        if (askAbortController) {
+            askAbortController.abort();
+        }
+        askAbortController = new AbortController();
+
+        // Show loading indicator
+        resultsContainer.innerHTML =
+            '<div class="ask-container">' +
+            '<div class="ask-loading" id="ask-loading">' +
+            '<div class="loading-spinner"></div> Thinking...</div>' +
+            '<div class="ask-answer" id="ask-answer"></div>' +
+            '<div class="ask-sources" id="ask-sources"></div>' +
+            "</div>";
+
+        var answerEl = document.getElementById("ask-answer");
+        var loadingEl = document.getElementById("ask-loading");
+        var sourcesEl = document.getElementById("ask-sources");
+        var receivedFirstToken = false;
+
+        var url =
+            "/api/ask?q=" + encodeURIComponent(query);
+
+        fetch(url, { signal: askAbortController.signal })
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error("Ask request failed: " + response.status);
+                }
+
+                var reader = response.body.getReader();
+                var decoder = new TextDecoder();
+                var buffer = "";
+
+                function processChunk() {
+                    return reader.read().then(function (result) {
+                        if (result.done) return;
+
+                        buffer += decoder.decode(result.value, {
+                            stream: true,
+                        });
+
+                        // Parse SSE events from buffer
+                        var lines = buffer.split("\n");
+                        buffer = "";
+
+                        var currentEvent = null;
+                        var currentData = [];
+
+                        for (var i = 0; i < lines.length; i++) {
+                            var line = lines[i];
+
+                            if (line.indexOf("event: ") === 0) {
+                                // If we had a pending event, process it first
+                                if (currentEvent !== null || currentData.length > 0) {
+                                    processSSEEvent(
+                                        currentEvent || "message",
+                                        currentData.join("\n"),
+                                        answerEl,
+                                        loadingEl,
+                                        sourcesEl
+                                    );
+                                    if (!receivedFirstToken && (currentEvent === "token")) {
+                                        receivedFirstToken = true;
+                                    }
+                                }
+                                currentEvent = line.substring(7).trim();
+                                currentData = [];
+                            } else if (line.indexOf("data: ") === 0) {
+                                currentData.push(line.substring(6));
+                            } else if (line.trim() === "") {
+                                if (
+                                    currentEvent !== null ||
+                                    currentData.length > 0
+                                ) {
+                                    processSSEEvent(
+                                        currentEvent || "message",
+                                        currentData.join("\n"),
+                                        answerEl,
+                                        loadingEl,
+                                        sourcesEl
+                                    );
+                                    if (!receivedFirstToken && (currentEvent === "token")) {
+                                        receivedFirstToken = true;
+                                    }
+                                    currentEvent = null;
+                                    currentData = [];
+                                }
+                            } else {
+                                // Incomplete line - put back in buffer
+                                buffer = lines.slice(i).join("\n");
+                                break;
+                            }
+                        }
+
+                        // If we still have a pending event at end of chunk
+                        // keep it in buffer for next chunk
+                        if (currentEvent !== null || currentData.length > 0) {
+                            var remaining = "";
+                            if (currentEvent !== null) {
+                                remaining += "event: " + currentEvent + "\n";
+                            }
+                            for (var j = 0; j < currentData.length; j++) {
+                                remaining += "data: " + currentData[j] + "\n";
+                            }
+                            buffer = remaining + buffer;
+                        }
+
+                        return processChunk();
+                    });
+                }
+
+                return processChunk();
+            })
+            .catch(function (err) {
+                if (err.name === "AbortError") return;
+                if (resultsContainer) {
+                    resultsContainer.innerHTML =
+                        '<div class="error-message">Ask failed: ' +
+                        escapeHtml(err.message) +
+                        "</div>";
+                }
+            });
+    }
+
+    function processSSEEvent(eventType, data, answerEl, loadingEl, sourcesEl) {
+        if (eventType === "token") {
+            // Hide loading indicator on first token
+            if (loadingEl && loadingEl.style.display !== "none") {
+                loadingEl.style.display = "none";
+            }
+            // Append token text to answer
+            if (answerEl) {
+                answerEl.textContent += data;
+            }
+        } else if (eventType === "error") {
+            // Show error message
+            if (loadingEl) {
+                loadingEl.style.display = "none";
+            }
+            if (answerEl) {
+                answerEl.innerHTML =
+                    '<div class="error-message">' +
+                    escapeHtml(data) +
+                    "</div>";
+            }
+        } else if (eventType === "sources") {
+            // Render source citations
+            try {
+                var sources = JSON.parse(data);
+                renderAskSources(sources, sourcesEl);
+            } catch (e) {
+                // Ignore parse errors
+            }
+        } else if (eventType === "done") {
+            // Stream complete — nothing else to do
+        }
+    }
+
+    function renderAskSources(sources, container) {
+        if (!container) return;
+
+        var html = [];
+        var hasSources = false;
+
+        // Fact citations
+        if (sources.facts && sources.facts.length > 0) {
+            hasSources = true;
+            html.push('<div class="sources-section">');
+            html.push('<h4 class="sources-title">Source Facts</h4>');
+            sources.facts.forEach(function (fact) {
+                html.push(
+                    '<div class="source-citation source-fact" data-fact-id="' +
+                        escapeHtml(String(fact.id)) +
+                        '">'
+                );
+                html.push(
+                    '<span class="badge badge-id">#' +
+                        escapeHtml(String(fact.id)) +
+                        "</span> "
+                );
+                html.push(
+                    '<span class="badge badge-category">' +
+                        escapeHtml(fact.category || "") +
+                        "</span> "
+                );
+                if (fact.confidence != null) {
+                    html.push(
+                        '<span class="badge badge-confidence">conf ' +
+                            escapeHtml(fact.confidence.toFixed(1)) +
+                            "</span> "
+                    );
+                }
+                html.push(
+                    "<span>" + escapeHtml(fact.fact || "") + "</span>"
+                );
+                html.push("</div>");
+            });
+            html.push("</div>");
+        }
+
+        // Message citations
+        if (sources.messages && sources.messages.length > 0) {
+            hasSources = true;
+            html.push('<div class="sources-section">');
+            html.push('<h4 class="sources-title">Source Messages</h4>');
+            sources.messages.forEach(function (msg) {
+                html.push('<div class="source-citation source-message">');
+                var ts = escapeHtml(
+                    (msg.timestamp || "").substring(0, 16)
+                );
+                var proj = escapeHtml(msg.project || "no-project");
+                var role = escapeHtml(msg.role || "?");
+                html.push(
+                    '<div class="result-meta">[' +
+                        ts +
+                        "] " +
+                        proj +
+                        " (" +
+                        role +
+                        ")</div>"
+                );
+                html.push(
+                    '<div class="result-snippet">' +
+                        escapeHtml(msg.content || "") +
+                        "</div>"
+                );
+                html.push("</div>");
+            });
+            html.push("</div>");
+        }
+
+        if (!hasSources) return;
+
+        container.innerHTML = html.join("");
+
+        // Attach click handlers for fact citations -> fact inspect
+        var factCitations = container.querySelectorAll(".source-fact");
+        factCitations.forEach(function (card) {
+            card.style.cursor = "pointer";
+            card.addEventListener("click", function () {
+                var factId = this.dataset.factId;
+                if (factId) {
+                    showFactInspect(factId);
+                }
+            });
+        });
     }
 
     function renderSearchResults(data) {
