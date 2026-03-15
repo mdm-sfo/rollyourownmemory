@@ -33,3 +33,9 @@
 - FTS5 tables use content-sync triggers (see schema.sql)
 - Argparse subcommands pattern for CLIs with multiple operations
 - Lazy imports for heavy optional deps (sentence-transformers, faiss)
+- Dual-import pattern in all consumer modules: `try: from src.memory_db import get_conn` / `except ImportError: from memory_db import get_conn` — supports both repo-root execution and src/-relative execution
+
+## Build System
+
+- Build backend is `setuptools.build_meta` (not `setuptools.backends._legacy:_Backend`)
+- `.gitignore` includes `*.egg-info/` for pip editable installs

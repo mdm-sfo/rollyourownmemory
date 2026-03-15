@@ -1,0 +1,63 @@
+{
+  "featureId": "memory-db-extraction",
+  "reviewedAt": "2026-03-15T06:45:00Z",
+  "commitId": "507d4f3",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "memory_db.py is well-structured with get_conn(), search_fts(), search_facts_fts(), get_session_messages(), list_recent_sessions(), store_fact(), and migrate_schema(). All 8 consumer files (mcp_server.py, claude_recall.py, inject.py, distill.py, curate.py, entities.py, embed.py, ingest.py) now import get_conn from memory_db. Zero bare sqlite3.connect() calls remain outside memory_db.py (verified by grep). Connection pragmas (WAL, synchronous=NORMAL, busy_timeout=5000, row_factory=Row) are correctly centralized. The try/except import fallback pattern (src.memory_db / memory_db) is consistently applied for both package and standalone usage. store_fact supports optional last_validated. All CLI --help commands still work per handoff verification.",
+    "issues": [
+      {
+        "file": "src/distill.py",
+        "line": 230,
+        "severity": "non_blocking",
+        "description": "distill.py retains a local get_session_messages() function with its own SQL query instead of importing from memory_db. While it has slightly different semantics (no partial ID prefix matching, uses dict(zip()) conversion), the feature description says to 'Remove ALL duplicated query logic'. This is residual duplication. The dict(zip()) pattern is also subtly wrong now that get_conn() sets row_factory=Row (rows are Row objects not tuples), though it still works because Row is iterable."
+      },
+      {
+        "file": "src/distill.py",
+        "line": 221,
+        "severity": "non_blocking",
+        "description": "distill.py retains a local store_facts() function doing its own INSERT INTO facts instead of using store_fact() from memory_db. The batch pattern with IntegrityError handling differs from memory_db's single-insert + commit, making refactoring non-trivial, but it's still duplicated INSERT logic."
+      },
+      {
+        "file": "src/claude_recall.py",
+        "line": 75,
+        "severity": "non_blocking",
+        "description": "search_facts() in claude_recall.py duplicates the search_facts_fts query inline because the shared function doesn't support project filtering. A comment acknowledges this ('search_facts_fts doesn't support project filter, add it manually'). The shared API could be extended with a project parameter to eliminate this duplication."
+      },
+      {
+        "file": "src/mcp_server.py",
+        "line": 188,
+        "severity": "non_blocking",
+        "description": "memory_search_facts tool output formatting was changed — timestamp and project were removed from fact display lines during refactoring. Previously showed '[ts] [category] proj: fact', now shows only '[category] (conf=X) fact'. This is a behavioral change not required by the feature."
+      },
+      {
+        "file": "src/memory_db.py",
+        "line": 40,
+        "severity": "non_blocking",
+        "description": "migrate_schema() runs 'DELETE FROM entity_mentions WHERE entity_id = 0' on every connection. While idempotent, this DELETE executes on every get_conn() call for existing databases. For large tables this could add latency. Consider making it conditional (check if any entity_id=0 rows exist first) or tracking migration state."
+      },
+      {
+        "file": "src/ingest.py",
+        "line": 312,
+        "severity": "non_blocking",
+        "description": "After calling get_conn() (which sets WAL + synchronous), init_db() re-executes the same PRAGMA statements. Redundant but harmless."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md documents that 'After memory_db.py extraction, modules import get_conn from src.memory_db and use DB_PATH from their own scope or pass it to get_conn()'. However, distill.py still has local get_session_messages() and store_facts() functions with duplicated SQL, contrary to the 'Remove ALL duplicated query logic' requirement. The convention about what level of query deduplication is expected could be clarified.",
+      "evidence": "src/distill.py:230 — local get_session_messages() with own SQL; src/distill.py:221 — local store_facts() with INSERT INTO facts. Compare to memory_db.py:get_session_messages() and store_fact()."
+    },
+    {
+      "area": "conventions",
+      "observation": "The search_facts_fts API in memory_db.py was designed without a project parameter, forcing claude_recall.py to duplicate the query inline. This suggests the shared API surface should match all consumer needs, but there's no guideline about when to extend the shared module vs. keep local overrides.",
+      "evidence": "src/claude_recall.py:75 — inline SQL with comment 'search_facts_fts doesn't support project filter'; src/memory_db.py search_facts_fts() — no project param."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The memory_db.py extraction is well-implemented and achieves its core goals: centralized connection management with proper pragmas, shared query functions, and elimination of all bare sqlite3.connect() calls. All 8 consumer files import get_conn from memory_db. The migration system is idempotent. CLI entry points (bin/claude-recall and pip-installed) continue to work. Non-blocking issues include residual query duplication in distill.py (local get_session_messages and store_facts) and claude_recall.py (inline search_facts SQL due to missing project filter in shared API), plus a minor behavioral change in mcp_server.py fact search output formatting. Overall a solid refactoring that meets the feature's primary intent."
+}

@@ -1,0 +1,45 @@
+{
+  "featureId": "pyproject-toml",
+  "reviewedAt": "2026-03-15T06:35:00.000Z",
+  "commitId": "f739d5e7b50605c54e14ddc5420fdf1191f2bb9e",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation that fulfills all feature requirements. pyproject.toml is correctly structured with setuptools build system, all 4 optional dependency groups, correct entry point, and CC-BY-NC-4.0 license. src/__init__.py makes src a proper package. src/claude_recall.py faithfully mirrors all CLI logic from the original bin/claude-recall with added type hints and proper `finally` blocks for connection cleanup. bin/claude-recall was correctly reduced to a thin wrapper. Worker verified all expected behaviors including pip install, CLI --help, import checks, and dep group validation. The initial build-backend typo (setuptools.backends._legacy:_Backend) was caught and fixed during implementation.",
+    "issues": [
+      {
+        "file": "bin/claude-recall",
+        "line": 15,
+        "severity": "non_blocking",
+        "description": "The `else: cli()` branch causes cli() to execute on import (when __name__ != '__main__'). Since the `if __name__ == '__main__'` block already handles direct execution, the else branch means any accidental import of this script would trigger CLI execution. Should be just `cli()` unconditionally (without if/else), or only in the `if __name__` block. In practice, since this is a bin script without .py extension, accidental imports are extremely unlikely."
+      },
+      {
+        "file": "src/claude_recall.py",
+        "line": 19,
+        "severity": "non_blocking",
+        "description": "Database connections use bare `sqlite3.connect(str(DB_PATH))` without busy_timeout or WAL mode. This is acceptable at this stage since memory_db.py (which centralizes connections with busy_timeout) is planned for the next feature. Confirmed fixed in subsequent commit 507d4f3."
+      },
+      {
+        "file": "pyproject.toml",
+        "line": 12,
+        "severity": "non_blocking",
+        "description": "Core dependencies (numpy, httpx) and optional dependencies (sentence-transformers, mcp, pytest) have no version constraints. For a personal tool this is acceptable, but could cause breakage with major version bumps of sentence-transformers or mcp."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "Worker initially used incorrect setuptools build backend 'setuptools.backends._legacy:_Backend' and had to debug/fix to 'setuptools.build_meta'. This is a common gotcha that could be documented in the library to save future workers time.",
+      "evidence": "Transcript shows worker created pyproject.toml with wrong backend, got pip install error, then fixed it with Edit tool to use 'setuptools.build_meta'. Two pip install attempts were needed."
+    },
+    {
+      "area": "conventions",
+      "observation": "Worker added *.egg-info/ to .gitignore as part of this feature. This is a sensible addition for any pip-installable project but isn't documented as a convention. Future features creating build artifacts should know .gitignore is already updated.",
+      "evidence": "Diff shows .gitignore modified: added '*.egg-info/' line between '*.pyc' and '.venv/' entries."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. pyproject.toml is correctly configured with all required metadata, dependency groups, and entry point. src/claude_recall.py faithfully reproduces all CLI functionality from the original bin/claude-recall with improved type hints and connection cleanup. bin/claude-recall is properly reduced to a thin wrapper. All verification steps (pip install, CLI --help, imports, dep group check) passed. Three non-blocking issues noted: an unnecessary else branch in the wrapper script, bare sqlite3.connect calls (addressed by the subsequent memory_db feature), and unpinned dependency versions."
+}
