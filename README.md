@@ -248,6 +248,62 @@ Add:
 
 If you want LLM-powered distillation on the cron, change the `distill.py` line to include `--llm`.
 
+### Hook-Based Automation (Recommended)
+
+Claude Code hooks trigger the memory pipeline at exactly the right moments — no cron delay.
+Add this to your `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/absolute/path/to/rollyourownmemory/hooks/memory-hook.sh",
+            "timeout": 10,
+            "statusMessage": "Loading memory context..."
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/absolute/path/to/rollyourownmemory/hooks/memory-hook.sh",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/absolute/path/to/rollyourownmemory/hooks/memory-hook.sh",
+            "timeout": 15,
+            "statusMessage": "Saving memory before compaction..."
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Replace `/absolute/path/to/rollyourownmemory` with the actual path to your installation.
+
+**What each hook does:**
+- **SessionStart**: Runs `inject.py --stdout` and feeds memory context directly into Claude's context window via `additionalContext`. Claude starts every session already knowing your preferences and recent work.
+- **SessionEnd**: Triggers `ingest.py` + `embed.py` in the background. Your conversation is in the database within seconds of closing, not at the next cron tick. Background processes (`&`) are essential — SessionEnd has a 1.5s default timeout.
+- **PreCompact**: Runs `ingest.py` synchronously, then `distill.py` in the background. Facts are extracted from the full conversation before compaction strips detail.
+
+**Note**: Hooks complement cron — keep your cron job as a safety net for edge cases where hooks don't fire (e.g., force-quit). The hook handles the latency-sensitive path; cron handles the durability path.
+
 ## Usage
 
 ### MCP Tools (automatic, in-session)
