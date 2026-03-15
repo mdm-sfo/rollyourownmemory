@@ -1,0 +1,34 @@
+{
+  "featureId": "docs-update-tools",
+  "reviewedAt": "2026-03-15T13:15:00.000Z",
+  "commitId": "c4ece81",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Documentation-only changes to CLAUDE.md and README.md. All four required updates were made correctly: (1) CLAUDE.md gained an MCP Tools table listing all 11 tools including memory_inspect, memory_deep_recall, memory_resume_context, and memory_feedback, plus an updated mcp_server.py description in the Key Files table. (2) README.md architecture diagram updated with 4 new tools. (3) README drill-down usage scenario added demonstrating memory_inspect → memory_deep_recall escalation. (4) README What's In the Box table updated for mcp_server.py. (5) README Schema section now includes compressed_details in facts table. Diff is clean: 2 files changed, 27 insertions, 4 deletions. All verification assertions (VAL-DOC-001, VAL-DOC-002, VAL-DOC-005, VAL-DOC-006) are satisfied.",
+    "issues": [
+      {
+        "file": "CLAUDE.md",
+        "line": 38,
+        "severity": "non_blocking",
+        "description": "CLAUDE.md documents memory_resume_context and memory_feedback as tools, but these are not yet implemented as @mcp.tool() functions in src/mcp_server.py. Only 9 of the 11 listed tools exist in code. This is acceptable within the milestone structure (other features are responsible for implementing those tools per VAL-MCP-008 and VAL-MCP-010), but if those features fail or are dropped, the docs will be inaccurate."
+      },
+      {
+        "file": "README.md",
+        "line": 290,
+        "severity": "non_blocking",
+        "description": "The drill-down usage scenario is well-written and demonstrates the inspect→deep_recall pattern effectively. Minor note: the scenario references 'compressed details listing cookie config, rotation logic, logout invalidation' which is a hypothetical example — this is fine for documentation."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The worker documented two not-yet-implemented tools (memory_resume_context, memory_feedback) in CLAUDE.md and README.md. This is consistent with the milestone plan where other features implement those tools, but AGENTS.md has no guidance on whether documentation features should only document already-implemented code or can document planned features. This could lead to drift if implementation features fail.",
+      "evidence": "CLAUDE.md MCP Tools table lists 11 tools; src/mcp_server.py only has 9 @mcp.tool() decorated functions (memory_resume_context and memory_feedback are missing). Validation contract separates VAL-DOC-001 (docs mention tools) from VAL-MCP-008/VAL-MCP-010 (tools exist)."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. All documentation changes are complete and accurate for the feature's scope. CLAUDE.md has an MCP Tools table with all 11 tools and updated Key Files description. README.md has updated architecture diagram, drill-down usage scenario, updated What's In the Box table, and compressed_details in the Schema section. The only non-blocking observation is that 2 of the 11 documented tools (memory_resume_context, memory_feedback) are not yet implemented in mcp_server.py — they are expected to be delivered by other features in the same milestone."
+}

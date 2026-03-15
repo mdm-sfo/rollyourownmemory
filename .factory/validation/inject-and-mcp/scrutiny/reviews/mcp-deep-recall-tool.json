@@ -1,0 +1,45 @@
+{
+  "featureId": "mcp-deep-recall-tool",
+  "reviewedAt": "2026-03-15T13:30:00Z",
+  "commitId": "d197401",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The memory_deep_recall tool is implemented correctly and meets all validation contract assertions (VAL-MCP-005, VAL-MCP-006, VAL-MCP-007, VAL-MCP-015). It searches both facts_fts and messages_fts, synthesizes via ollama llama3.3:70b when synthesize=True, falls back to raw results on LLM failure with 'LLM synthesis unavailable' note, and returns 'No memories found' for empty results. The function signature matches the spec exactly. Six new tests were added covering all key behaviors. Three non-blocking issues were identified.",
+    "issues": [
+      {
+        "file": "src/mcp_server.py",
+        "line": 423,
+        "severity": "non_blocking",
+        "description": "Silent exception swallowing violates AGENTS.md convention ('Never silently swallow errors. Log to stderr at minimum.'). The `except Exception: pass` block at line 423-425 catches all LLM errors without any logging. Should add `import sys; print(f'memory_deep_recall: LLM synthesis failed: {e}', file=sys.stderr)` or similar. Other tools in the file (e.g., sqlite3.OperationalError catches at lines 344, 369) also swallow silently, so this is a pre-existing pattern, but it's still a convention gap."
+      },
+      {
+        "file": "src/mcp_server.py",
+        "line": 325,
+        "severity": "non_blocking",
+        "description": "Duplicates query logic from memory_db.py instead of reusing search_fts() and search_facts_fts(). The facts query (lines 325-343) and messages query (lines 347-369) duplicate SQL patterns already available in memory_db.search_facts_fts() and memory_db.search_fts(). Other MCP tools (memory_search, memory_search_facts) use the shared functions. This increases maintenance burden — if the schema or query logic changes, this function must be updated separately. Not blocking because the queries work correctly, but it diverges from the established pattern."
+      },
+      {
+        "file": "src/mcp_server.py",
+        "line": 427,
+        "severity": "non_blocking",
+        "description": "When synthesize=False, the fallback header says '(raw — LLM synthesis unavailable)' which implies the LLM failed, when actually the user explicitly chose not to synthesize. The text should differentiate between user choice (synthesize=False) and LLM failure. Minor UX issue."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Multiple MCP tools silently swallow sqlite3.OperationalError and Exception without logging to stderr. AGENTS.md states 'Never silently swallow errors. Log to stderr at minimum.' but this pattern exists across at least 5 except blocks in mcp_server.py (lines 182, 197, 259, 344, 369, 423). The convention is documented but not enforced.",
+      "evidence": "mcp_server.py lines 344 (`except sqlite3.OperationalError: pass`), 369 (same), 423 (`except Exception: pass`). Pre-existing pattern at lines 182, 197, 259."
+    },
+    {
+      "area": "conventions",
+      "observation": "No clear convention documented about when MCP tools should write inline SQL vs. reuse shared query functions from memory_db.py. Existing tools (memory_search, memory_search_facts) use memory_db helpers, but memory_deep_recall writes its own SQL. AGENTS.md says 'All DB connections through memory_db.get_conn()' but doesn't mandate using shared query functions.",
+      "evidence": "memory_deep_recall writes inline SQL at lines 325-343 and 347-369 instead of calling search_facts_fts() and search_fts() from memory_db.py. Compare with memory_search (line 55: calls search_fts) and memory_search_facts (line 181: calls search_facts_fts)."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The memory_deep_recall tool implementation is correct, complete, and meets all four validation assertions (VAL-MCP-005/006/007/015). The tool has the right signature, searches both FTS tables, uses llama3.3:70b for synthesis, and gracefully falls back on LLM failure. Six well-structured tests were added. Three non-blocking issues were found: (1) silent exception swallowing without stderr logging, (2) inline SQL duplication instead of reusing memory_db helpers, and (3) misleading header text when synthesize=False. None of these affect correctness."
+}

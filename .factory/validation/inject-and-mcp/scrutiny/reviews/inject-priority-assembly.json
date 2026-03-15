@@ -1,0 +1,45 @@
+{
+  "featureId": "inject-priority-assembly",
+  "reviewedAt": "2026-03-15T13:15:00Z",
+  "commitId": "c70f0b4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid refactoring of inject.py from dumb truncation to priority-based section assembly. The implementation extracts four helper functions (_build_facts_section, _build_sessions_section, _build_entities_section, _build_focus_section), builds sections independently as (priority, text) tuples, and assembles them in priority order within a character budget (max_tokens * 4). The old output[:max_chars] truncation and '[...truncated to fit token budget]' marker are fully removed. Facts budget overflow is handled by progressively reducing the SQL LIMIT (30 → 10 → 5). The --stdout flag is correctly implemented with proper precedence over --output. All 8 new tests pass alongside 12 existing tests. Code follows project conventions: functions over classes, pathlib, argparse, type hints, error handling to stderr, get_conn() for DB access.",
+    "issues": [
+      {
+        "file": "src/inject.py",
+        "line": 266,
+        "severity": "non_blocking",
+        "description": "Facts budget reduction check compares len(facts_text)//4 against max_tokens (the full token budget), but during assembly the check is used+section_cost <= budget_chars where used already includes the header length. This means facts could pass the reduction check but still not fit during assembly if the header pushes them over. In practice the header is ~30 chars (~8 tokens) so this is negligible, but the reduction check could use (budget_chars - len(header)) for exact consistency."
+      },
+      {
+        "file": "tests/test_inject.py",
+        "line": 95,
+        "severity": "non_blocking",
+        "description": "test_sections_skipped_when_over_budget only asserts that truncation markers are absent — it doesn't verify that specific lower-priority sections (e.g., Sessions, Entities) were actually skipped from the output. A stronger assertion would check that '## Recent Sessions' or '## Active Stack' is NOT present when budget is tight. Similar weakness in test_facts_limit_reduced_when_too_large which doesn't verify fewer facts appear."
+      },
+      {
+        "file": "src/inject.py",
+        "line": 323,
+        "severity": "non_blocking",
+        "description": "The --stdout and --output flags are not mutually exclusive in argparse. If both are passed, --stdout silently wins due to if/elif ordering. Could add a mutually_exclusive_group or at least a warning, but current behavior is reasonable."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Worker correctly followed all AGENTS.md conventions: functions over classes, pathlib for paths, argparse for CLI, type hints on all new functions, error handling to stderr, DB access through get_conn(). No gaps identified.",
+      "evidence": "src/inject.py helper functions all have type hints (e.g., _build_facts_section(conn, project: str | None, now: datetime, limit: int = 30) -> str), pathlib.Path used for DB_PATH and output, get_conn() for connection."
+    },
+    {
+      "area": "skills",
+      "observation": "Worker followed the python-worker SKILL.md procedure fully: read affected files, planned changes, implemented, wrote tests, verified with all specified verification steps, committed with the exact specified commit message. skillFeedback.followedProcedure is true with no deviations.",
+      "evidence": "Transcript shows: Read inject.py → planned 5 changes → implemented via Edit → created test_inject.py → ran pytest (20 passed) → verified --help, --stdout, grep for old patterns → committed with exact message 'feat: smart token-budget assembly in inject.py'."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The inject-priority-assembly feature is correctly implemented. generate_memory_context() now builds sections independently with priorities (Header=1, Facts=2, Focus=3, Sessions=4, Entities=5) and assembles them within the token budget. Sections that don't fit are skipped entirely — no mid-text truncation. Facts budget overflow is handled by reducing the SQL LIMIT progressively. The --stdout flag works correctly. Old truncation code is fully removed. All 6 validation assertions (VAL-INJECT-001 through VAL-INJECT-006) are satisfied. Three non-blocking issues noted: (1) minor inconsistency in facts budget check vs assembly budget, (2) some tests have weak assertions that don't directly verify section skipping, (3) --stdout and --output are not mutually exclusive."
+}

@@ -1,0 +1,53 @@
+{
+  "milestone": "inject-and-mcp",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": { "passed": true, "command": ".venv/bin/python -m pytest tests/ -v", "exitCode": 0 },
+    "typecheck": { "passed": true, "command": "echo \"No typecheck configured (no mypy/pyright in project)\"", "exitCode": 0 },
+    "lint": { "passed": true, "command": "echo \"No linter configured\"", "exitCode": 0 }
+  },
+  "reviewsSummary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add convention: When adding new values to validation sets (e.g., category lists), all related docstrings that enumerate valid values must also be updated. MCP tool descriptions are derived from docstrings, so stale docstrings affect tool discoverability.",
+      "evidence": "Feature mcp-inspect-tool added 'error' and 'solution' to memory_add_fact's validation set and updated memory_search_facts docstring, but missed updating memory_add_fact docstring (line 211). Users won't see the new categories in tool descriptions.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Strengthen the error handling convention to explicitly cover MCP tools: 'In MCP tool functions, catch specific exceptions (sqlite3.OperationalError, httpx errors) and log to stderr before returning a user-friendly fallback. Never use bare `except Exception: pass` without logging.'",
+      "evidence": "Feature mcp-deep-recall-tool has `except Exception: pass` at line 423 without logging. Pre-existing pattern exists across at least 5 except blocks in mcp_server.py (lines 182, 197, 259, 344, 369). AGENTS.md says 'Never silently swallow errors' but workers still do it, suggesting the convention needs to be more specific about MCP tools.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add convention: MCP tools that query FTS tables should reuse shared query functions from memory_db.py (search_fts, search_facts_fts) rather than writing inline SQL. This ensures consistency if schema or query logic changes.",
+      "evidence": "Feature mcp-deep-recall-tool writes inline SQL for facts_fts (lines 325-343) and messages_fts (lines 347-369) queries instead of using memory_db.search_facts_fts() and memory_db.search_fts(). Other tools (memory_search, memory_search_facts) correctly use the shared functions.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Worker correctly followed all AGENTS.md conventions (inject-priority-assembly review)",
+      "reason": "Positive observation, no action needed — not a gap or issue"
+    },
+    {
+      "observation": "Worker followed python-worker SKILL.md procedure fully (inject-priority-assembly review)",
+      "reason": "Positive observation, no action needed — not a gap or issue"
+    },
+    {
+      "observation": "Documentation features may document not-yet-implemented tools that depend on other features in the milestone",
+      "reason": "This is by design in the milestone structure — documentation was correctly scoped by the validation contract. VAL-DOC-001 requires docs mention tools, VAL-MCP-008/010 require tools exist. Separate concerns working as intended."
+    }
+  ],
+  "previousRound": null
+}

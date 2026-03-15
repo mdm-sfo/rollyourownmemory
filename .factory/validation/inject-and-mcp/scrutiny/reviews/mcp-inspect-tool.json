@@ -1,0 +1,28 @@
+{
+  "featureId": "mcp-inspect-tool",
+  "reviewedAt": "2026-03-15T13:15:00Z",
+  "commitId": "97682652d8e38ba979e252345b94e6d73b009729",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation of memory_inspect tool and related updates. The memory_inspect function correctly retrieves fact details, compressed_details (with graceful error handling), source message (truncated to 800 chars), sibling facts (up to 10), and related entities (up to 10). memory_search_facts properly includes [#ID] prefixes and compressed_details in output, with return string mentioning memory_inspect and memory_feedback. memory_add_fact validation set correctly includes 'error' and 'solution'. All code paths close the DB connection properly. One non-blocking issue: the memory_add_fact docstring was not updated to list the new categories.",
+    "issues": [
+      {
+        "file": "src/mcp_server.py",
+        "line": 211,
+        "severity": "non_blocking",
+        "description": "memory_add_fact docstring says 'One of: preference, decision, learning, context, tool, pattern' but does not list 'error' and 'solution'. The memory_search_facts docstring (line 176) was correctly updated to include both new categories. Since MCP tool descriptions are derived from docstrings, callers won't see error/solution as valid options in the tool description. The runtime validation error message does list all valid categories, so this is a usability issue rather than a functional bug."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "When new categories are added to a validation set, all related docstrings referencing the category list should also be updated. The worker updated the memory_search_facts docstring correctly but missed the memory_add_fact docstring. AGENTS.md mentions adding categories to the validation set but doesn't explicitly require updating corresponding docstrings.",
+      "evidence": "src/mcp_server.py:176 correctly lists 'error, solution' in memory_search_facts docstring; src/mcp_server.py:211 still says 'One of: preference, decision, learning, context, tool, pattern' without error/solution in memory_add_fact docstring."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. The memory_inspect tool is well-implemented with proper error handling for missing facts, missing compressed_details, null session_ids, and absent source messages. The memory_search_facts output correctly includes [#ID] and compressed_details, and the return string guides users to memory_inspect and memory_feedback. The memory_add_fact validation set correctly includes 'error' and 'solution'. One non-blocking issue: the memory_add_fact docstring omits the two new categories from its description, which affects MCP tool discovery but not runtime behavior."
+}
