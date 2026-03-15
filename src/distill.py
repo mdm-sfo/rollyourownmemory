@@ -30,6 +30,8 @@ FACT_CATEGORIES = {
     "context": "Background context about the user's environment or goals",
     "tool": "Tools, libraries, or services the user works with",
     "pattern": "Recurring patterns or workflows",
+    "error": "Error conditions encountered and their symptoms",
+    "solution": "Fixes and workarounds for specific errors",
 }
 
 # Heuristic patterns for fact extraction
@@ -165,12 +167,21 @@ Rules:
 - "context" = persistent background info about the user's environment, projects, or goals
 - "tool" = tools, libraries, or services the user relies on and how they use them
 - "pattern" = recurring workflows or approaches
+- "error" = specific error conditions worth remembering (include error text, affected component, and trigger conditions)
+- "solution" = the fix or workaround for a specific error (reference what error it solves)
 
 Do NOT extract:
 - Transient requests ("fix this bug", "show me the output")
 - Conversational filler
 - Facts about the AI assistant itself
 - Anything only relevant to this one session
+
+When you find an error/solution pair, extract BOTH as separate facts:
+- The error fact should include enough detail to recognize the problem if it recurs
+- The solution fact should reference the error and include the specific fix
+Example:
+  {{"fact": "CORS preflight fails when Authorization header present on cross-origin /api/v2 requests", "category": "error", "compressed_details": "full error message text, browser console output"}}
+  {{"fact": "Fix CORS preflight: add explicit OPTIONS handler with Access-Control-Allow-Headers: Authorization in Express router", "category": "solution", "compressed_details": "exact middleware code, header list"}}
 {existing_context}
 Return a JSON array of objects with these keys:
 - "fact": concise statement of the durable fact
