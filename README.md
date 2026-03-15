@@ -63,7 +63,9 @@ Protocols:      ssh(77x), http(76x), websocket(20x)
 │  MCP Tools:  memory_search, memory_semantic_search,      │
 │              memory_search_facts, memory_add_fact,        │
 │              memory_get_session, memory_list_sessions,    │
-│              memory_find_entity                           │
+│              memory_find_entity, memory_inspect,          │
+│              memory_deep_recall, memory_resume_context,   │
+│              memory_feedback                              │
 │                                                          │
 │  Slash Commands: /recall, /sessions, /session, /facts    │
 └──────────────┬───────────────────────────┬───────────────┘
@@ -107,7 +109,7 @@ Protocols:      ssh(77x), http(76x), websocket(20x)
 | `src/inject.py` | Generates `memory-context.md` for passive injection into CLAUDE.md. Project-aware via `$PWD`. |
 | `src/curate.py` | Interactive fact review, hand-curation, import/export. |
 | `bin/claude-recall` | CLI search tool: keyword, semantic, sessions, facts. Backward-compatible with bare queries. |
-| `src/mcp_server.py` | MCP server exposing all memory functions as tools Claude Code can call directly. |
+| `src/mcp_server.py` | MCP server exposing memory tools: search, facts, inspect, deep recall, resume context, feedback. |
 
 ## Setup
 
@@ -282,6 +284,11 @@ Claude Code calls these automatically when relevant. You can also ask directly. 
 >
 > Claude queries your entity graph: "pytest mentioned 45x, playwright 20x, jest 3x" — decisions based on your actual usage, not guesswork.
 
+**Drill into compressed details:**
+> *"How exactly did we configure the JWT refresh logic?"*
+>
+> Claude searches facts, finds "Decision: using JWT with refresh tokens" with compressed details listing "cookie config, rotation logic, logout invalidation". Claude calls `memory_inspect` to get the source message, then `memory_deep_recall` to synthesize the complete answer from all related context — delivering the exact configuration without you re-explaining anything.
+
 ### Slash Commands (manual, in-session)
 
 ```
@@ -362,7 +369,7 @@ The `ingest.py` script supports custom source directories. See `discover_sources
 ```sql
 messages        — id, source_file, session_id, project, role, content, timestamp, machine
 embeddings      — message_id, embedding (float32 blob), model
-facts           — id, session_id, project, fact, category, confidence, source_message_id
+facts           — id, session_id, project, fact, category, confidence, source_message_id, compressed_details
 entities        — id, name, entity_type, first_seen, last_seen, mention_count
 entity_mentions — id, entity_id, message_id, session_id, timestamp
 ```

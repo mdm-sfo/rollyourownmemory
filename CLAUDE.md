@@ -19,8 +19,24 @@ Conversation memory system — ingests Claude Code JSONL logs into SQLite + FTS5
 | `src/entities.py` | Entity/tool/library extraction |
 | `src/inject.py` | Generate `~/.claude/memory-context.md` |
 | `src/curate.py` | Interactive fact review and curation |
-| `src/mcp_server.py` | MCP server for Claude Code integration |
+| `src/mcp_server.py` | MCP server for Claude Code integration (search, facts, inspect, deep recall, resume, feedback) |
 | `bin/claude-recall` | CLI search tool (FTS + semantic + facts + sessions) |
+
+## MCP Tools
+
+| Tool | Purpose |
+|------|---------|
+| `memory_search` | Full-text keyword search across messages |
+| `memory_semantic_search` | Vector similarity search by meaning |
+| `memory_search_facts` | Search extracted facts and knowledge |
+| `memory_add_fact` | Store a new fact for long-term memory |
+| `memory_get_session` | Retrieve full conversation thread |
+| `memory_list_sessions` | List recent sessions with summaries |
+| `memory_find_entity` | Find mentions of a tool/library/service |
+| `memory_inspect` | Drill into a fact: source message, sibling facts, related entities |
+| `memory_deep_recall` | Cross-session search with optional LLM synthesis |
+| `memory_resume_context` | "Pick up where I left off" — last session context |
+| `memory_feedback` | Confidence calibration: correct, helpful, wrong, outdated, irrelevant |
 
 ## Usage
 
