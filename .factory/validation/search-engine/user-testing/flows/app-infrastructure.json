@@ -1,0 +1,57 @@
+{
+  "group": "app-infrastructure",
+  "testedAt": "2026-03-15T00:00:00Z",
+  "assertions": {
+    "VAL-APP-001": {
+      "status": "pass",
+      "evidence": "curl http://localhost:8585/ returns HTTP 200 in 1.6ms. Server is running on port 8585.",
+      "details": "curl -sf -o /dev/null -w 'HTTP_CODE:%{http_code}' http://localhost:8585/ returned HTTP_CODE:200. Page served full HTML content.",
+      "steps": [
+        {"action": "curl http://localhost:8585/", "expected": "HTTP 200 response", "observed": "HTTP 200 response in 1.6ms"}
+      ]
+    },
+    "VAL-APP-002": {
+      "status": "pass",
+      "evidence": "Main page loads with all assets. style.css (200), app.js (200) served from /static/. Screenshot shows styled page with navigation, search bar, and mode toggle. No 404s in resource loading.",
+      "details": "All 3 static files (index.html, style.css, app.js) return HTTP 200. Browser performance.getEntriesByType('resource') shows only 2 resources: style.css and app.js, both from localhost:8585 with status 200. No console errors. Screenshot saved as VAL-APP-002-page-loaded.png.",
+      "steps": [
+        {"action": "curl static/style.css", "expected": "HTTP 200", "observed": "HTTP 200"},
+        {"action": "curl static/app.js", "expected": "HTTP 200", "observed": "HTTP 200"},
+        {"action": "agent-browser open http://localhost:8585", "expected": "Page loads with styled content", "observed": "Page loads with nav bar, search UI, all CSS applied"},
+        {"action": "Check console errors", "expected": "No errors", "observed": "No errors"},
+        {"action": "Check resource loading", "expected": "All assets loaded, no 404s", "observed": "2 resources loaded (style.css, app.js), both 200, no 404s"}
+      ]
+    },
+    "VAL-APP-003": {
+      "status": "pass",
+      "evidence": "GET /api/health returns 200 with JSON: {\"status\":\"ok\",\"db_accessible\":true}",
+      "details": "curl -sf http://localhost:8585/api/health returned HTTP 200 with JSON body indicating database is accessible.",
+      "steps": [
+        {"action": "curl http://localhost:8585/api/health", "expected": "200 with JSON status and DB accessible indicator", "observed": "200 with {\"status\":\"ok\",\"db_accessible\":true}"}
+      ]
+    },
+    "VAL-APP-004": {
+      "status": "pass",
+      "evidence": "GET /api/facts/999999 returns 404 with JSON: {\"error\":\"Fact 999999 not found\"}",
+      "details": "curl http://localhost:8585/api/facts/999999 returned HTTP 404 with a structured JSON error message. No HTML or 500 error.",
+      "steps": [
+        {"action": "curl http://localhost:8585/api/facts/999999", "expected": "404 JSON with error message", "observed": "HTTP 404 with {\"error\":\"Fact 999999 not found\"}"}
+      ]
+    },
+    "VAL-APP-005": {
+      "status": "pass",
+      "evidence": "All HTML, CSS, JS served from localhost:8585. No external domain URLs found in any source files. Browser resource entries show only localhost:8585 requests.",
+      "details": "Grepped HTML for external src/href URLs: none found. Grepped CSS for external url() references: none found. Grepped JS for external fetch/import/src/href URLs: none found. Browser performance.getEntriesByType('resource') confirmed only 2 resources loaded, both from http://localhost:8585/static/.",
+      "steps": [
+        {"action": "grep HTML for external URLs", "expected": "No external URLs", "observed": "No external URLs"},
+        {"action": "grep CSS for external URLs", "expected": "No external URLs", "observed": "No external URLs"},
+        {"action": "grep JS for external URLs", "expected": "No external URLs", "observed": "No external URLs"},
+        {"action": "Check browser resource entries", "expected": "All from localhost:8585", "observed": "2 resources, all from http://localhost:8585/static/"}
+      ]
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "toolsUsed": ["curl", "agent-browser"],
+  "summary": "Tested 5 assertions: 5 passed, 0 failed. All app infrastructure assertions verified — server runs on port 8585, static files served correctly, health endpoint responds with DB status, API returns structured JSON errors, and no external CDN dependencies exist."
+}

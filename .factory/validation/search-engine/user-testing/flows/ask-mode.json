@@ -1,0 +1,35 @@
+{
+  "group": "ask-mode",
+  "assertions": {
+    "VAL-SEARCH-005": {
+      "status": "pass",
+      "evidence": "Screenshots show Search/Ask toggle buttons. Initial state: 'Search' button highlighted blue. After clicking 'Ask': 'Ask' button highlighted blue, confirming mode switch. Submitting 'what is kalshi' in Ask mode produced a synthesized LLM answer about Kalshi being a financial platform with Bloomberg terminal aliases, API features, and WebSocket support.",
+      "details": "Steps: (1) Navigated to http://localhost:8585 - page loaded with Search/Ask toggle and search bar. (2) Clicked 'Ask' button - UI updated to show Ask mode active (blue highlight on Ask button). (3) Typed 'what is kalshi' and clicked Go. (4) After ~15s of 'Thinking...' indicator, synthesized LLM answer appeared with contextual information about Kalshi drawn from memory. No console errors."
+    },
+    "VAL-SEARCH-006": {
+      "status": "pass",
+      "evidence": "SSE streaming verified via curl: GET /api/ask?q=kalshi returns Content-Type: text/event-stream. Tokens arrive progressively: 'The', ' Kal', 'shi', ' API', ' supports', ' full', ' order', ' book', ' depth', etc. Each token is a separate SSE event (event: token\\ndata: <token>). In browser, 'Thinking...' spinner shown initially, then text progressively appeared.",
+      "details": "Curl with -N flag to /api/ask?q=kalshi confirmed SSE text/event-stream response with progressive token delivery. Tokens streamed one-by-one over ~20 seconds. The UI showed a 'Thinking...' spinner (captured in screenshot at 5s mark) before text started appearing. Browser screenshot at 30s showed completed synthesized answer, confirming progressive rendering."
+    },
+    "VAL-SEARCH-007": {
+      "status": "pass",
+      "evidence": "Below the synthesized answer, a 'SOURCE MESSAGES' section displays multiple citation entries with timestamps, project paths, role labels (user/assistant), and content snippets. Citations include messages like cheat sheets about Kalshi aliases, questions about Kalshi events, and discussions about the Kalshi platform.",
+      "details": "After the LLM answer, the page shows 'SOURCE MESSAGES' heading followed by 5+ source message citations. Each citation shows: [timestamp] project_path (role) followed by message content preview. Examples: '[2025-03-10T15:44] /home/matthewmurray (assistant) Here's the cheat sheet...', '[2025-02-06 10:1:20] no-project (assistant) Now let me find where kalshi command is handled...'. The SSE API sends sources as a final event after streaming completes (verified in source code: event: sources with JSON payload containing facts and messages arrays)."
+    },
+    "VAL-SEARCH-008": {
+      "status": "pass",
+      "evidence": "Source code inspection of src/web.py lines 319-347 confirms comprehensive error handling: the /api/ask endpoint wraps the ollama HTTP call in try/except catching httpx.ConnectError, httpx.ConnectTimeout, httpx.TimeoutException, and OSError. On connection failure, it yields an SSE error event: 'event: error\\ndata: LLM service unavailable. Could not connect to ollama. (<ExceptionType>)'. A generic Exception catch also handles unexpected errors with 'LLM error: <type>'.",
+      "details": "Per task instructions, did NOT stop ollama. Verified error handling code path exists in src/web.py: (1) httpx.AsyncClient with 120s timeout wraps the ollama POST request. (2) Specific exceptions caught: httpx.ConnectError, httpx.ConnectTimeout, httpx.TimeoutException, OSError -> returns clear SSE error 'LLM service unavailable. Could not connect to ollama.' (3) Generic Exception catch returns 'LLM error: <type>'. (4) Empty query and no-results cases also handled with SSE error events. The error message structure is clear and user-friendly, not a crash or hang."
+    }
+  },
+  "frictions": [
+    {
+      "description": "The 70B LLM model takes ~15 seconds before first token appears (shown as 'Thinking...' in UI). This is expected for a large model but worth noting as it may concern users who expect faster responses.",
+      "resolved": true,
+      "resolution": "The UI shows a 'Thinking...' spinner with animation to indicate processing, which provides adequate feedback to the user.",
+      "affectedAssertions": ["VAL-SEARCH-005", "VAL-SEARCH-006"]
+    }
+  ],
+  "blockers": [],
+  "toolsUsed": ["agent-browser", "curl"]
+}

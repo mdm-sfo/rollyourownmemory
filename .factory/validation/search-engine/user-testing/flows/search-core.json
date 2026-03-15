@@ -1,0 +1,66 @@
+{
+  "group": "search-core",
+  "testedAt": "2026-03-15T12:00:00Z",
+  "assertions": {
+    "VAL-SEARCH-001": {
+      "status": "pass",
+      "evidence": "Screenshot shows search bar with placeholder 'Search your memory...' and visible Search/Ask mode toggle buttons, plus navigation bar with Search, Facts, Sessions, CLAUDE.md, Context Preview links.",
+      "details": "Navigated to http://localhost:8585/. Page loaded with search input field (@e8), Go button (@e9), Search mode button (@e6), and Ask mode button (@e7). Screenshot: search-engine/search-core/VAL-SEARCH-001-search-page.png"
+    },
+    "VAL-SEARCH-002": {
+      "status": "pass",
+      "evidence": "Screenshot shows MESSAGES section with results containing timestamps (e.g., [2026-02-05T00:57]), project names (e.g., /home/matthewmurray, /home/ec2-user), role labels (user/assistant), and content snippets.",
+      "details": "Searched for 'kalshi' in Search mode. API returned 20 messages. Messages include id, session_id, project, role, content snippet, and timestamp fields. Screenshots: search-engine/search-core/VAL-SEARCH-002-kalshi-results.png, search-engine/search-core/VAL-SEARCH-002-kalshi-messages.png, search-engine/search-core/VAL-SEARCH-002-kalshi-more.png"
+    },
+    "VAL-SEARCH-003": {
+      "status": "pass",
+      "evidence": "Screenshot shows FACTS section with results displaying fact IDs (#993, #982, #942, etc.), categories (tool, context, pattern), confidence scores (conf 0.9, conf 0.5), and fact text.",
+      "details": "Searching for 'kalshi' returns 20 facts. Each fact card shows: badge with ID (#993), category badge (tool/context/pattern), confidence badge (conf 0.9), and full fact text. Screenshot: search-engine/search-core/VAL-SEARCH-002-kalshi-results.png"
+    },
+    "VAL-SEARCH-004": {
+      "status": "pass",
+      "evidence": "Empty search shows 'Enter a query to search your memory.' message. No-match query shows semantic matches section (not blank or error).",
+      "details": "Tested two cases: (1) Empty query - clicking Go with empty search box shows helpful message. (2) Nonsensical query 'xyzzyplughtwisty999' - shows 'Found 5 results' with SEMANTIC MATCHES section (closest vector matches). No errors, no blank page. Screenshots: search-engine/search-core/VAL-SEARCH-004-empty-search.png, search-engine/search-core/VAL-SEARCH-004-no-match.png"
+    },
+    "VAL-SEARCH-009": {
+      "status": "fail",
+      "evidence": "API response time is ~1.6s (3 runs: 1.717s, 1.613s, 1.587s). FTS-only database queries take ~3.5ms, but the API endpoint bundles semantic search (sentence-transformers + FAISS) which dominates the response time.",
+      "details": "The /api/search endpoint combines FTS + semantic search in a single call. FTS portion is extremely fast (~3.5ms for messages + facts), but the endpoint also runs semantic search via sentence-transformers/FAISS which takes ~1.5s. The timing_ms field in the API response shows ~1600-1800ms. There is no parameter to request FTS-only results. The assertion specifies 'measured from API response time', and the total API response exceeds 500ms."
+    },
+    "VAL-SEARCH-010": {
+      "status": "pass",
+      "evidence": "Conceptual query 'configuration management' returns semantically related results (DGX Spark management, deployment management, config topics) via FAISS vector similarity, alongside FTS keyword matches. API shows 5 semantic results with scores 0.5-0.6.",
+      "details": "Searched for 'configuration management'. API returned 16 FTS messages, 0 facts, 10 sessions, and 5 semantic results. Semantic results include content about managing deployments, env vars, and configuration - semantically related without exact keyword match. Screenshot: search-engine/search-core/VAL-SEARCH-010-semantic.png, search-engine/search-core/VAL-SEARCH-010-semantic-results.png"
+    },
+    "VAL-SEARCH-011": {
+      "status": "pass",
+      "evidence": "Code inspection confirms _semantic_search() is wrapped in try/except Exception that returns empty list on any failure. FTS operations are independent - run before semantic search and return regardless of semantic search status.",
+      "details": "Cannot disable FAISS in read-only test mode without affecting other parallel validators. Verified via code review: src/web.py lines 86-106 show _semantic_search() wrapped in broad try/except. FTS message search, fact search, and session search all run independently before semantic search at lines 155-202. If FAISS or sentence-transformers fail, the endpoint returns FTS results with an empty semantic array."
+    },
+    "VAL-SEARCH-012": {
+      "status": "pass",
+      "evidence": "Invalid FTS5 syntax '\"unbalanced quote' returns HTTP 200 with empty FTS results and semantic matches. No 500 error, no raw SQL error exposed.",
+      "details": "API returns 200 with empty messages/facts/sessions arrays but semantic results still work. The FTS operations are wrapped in try/except sqlite3.OperationalError blocks (src/web.py lines 167, 183, 201) that silently catch invalid syntax. Browser shows 'Found 5 results in 1549.5ms' with SEMANTIC MATCHES. Screenshot: search-engine/search-core/VAL-SEARCH-012-fts5-error.png"
+    },
+    "VAL-SEARCH-013": {
+      "status": "pass",
+      "evidence": "Script tags '<script>alert(1)</script>' rendered as plain text in search input and results. No alert dialog, no console errors, no script execution. Frontend uses comprehensive escapeHtml() function for all rendered text.",
+      "details": "Searched for '<script>alert(1)</script>'. The search input shows the text as-is (HTML-escaped in input field). Results show semantic matches where script tags appear as escaped text. No JavaScript execution occurred (no alert dialog). No console errors. Code review confirms app.js uses escapeHtml() on every piece of user content and API data before rendering to DOM. Screenshot: search-engine/search-core/VAL-SEARCH-013-xss-test.png"
+    },
+    "VAL-SEARCH-014": {
+      "status": "pass",
+      "evidence": "Screenshot shows SESSIONS section in search results with session cards displaying dates (2026-03-14), project paths (/home/matthewmurray), message counts (2 msgs), and content snippets.",
+      "details": "Searching for 'kalshi' returns 10 sessions alongside messages and facts. Each session card shows: date, project path, message count, and a snippet of the session content. API response includes sessions array with session_id, project, first_msg, last_msg, msg_count, and snippets fields. Screenshot: search-engine/search-core/VAL-SEARCH-014-sessions.png"
+    }
+  },
+  "frictions": [
+    {
+      "description": "The /api/search endpoint bundles FTS and semantic search in a single call with no way to request FTS-only results. This makes it impossible to measure FTS response time separately at the API level. The combined timing (~1.6s) is dominated by sentence-transformer model inference for semantic search, while FTS itself takes ~3.5ms.",
+      "resolved": false,
+      "resolution": null,
+      "affectedAssertions": ["VAL-SEARCH-009"]
+    }
+  ],
+  "blockers": [],
+  "toolsUsed": ["agent-browser", "curl"]
+}
