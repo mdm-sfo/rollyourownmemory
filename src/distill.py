@@ -13,7 +13,7 @@ import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 try:
     from src.memory_db import get_conn, get_session_messages
@@ -281,7 +281,7 @@ def get_undistilled_sessions(conn):
 _embedding_model = None
 
 
-def _get_dedup_model(model_name: Optional[str] = None):
+def _get_dedup_model(model_name: Optional[str] = None) -> Any:
     """Lazy-load the embedding model for deduplication.
 
     Args:
@@ -298,7 +298,7 @@ def _get_dedup_model(model_name: Optional[str] = None):
     return _embedding_model
 
 
-def _compute_embedding(text: str):
+def _compute_embedding(text: str) -> Any:
     """Compute a normalized embedding for a fact text string."""
     import numpy as np
     model = _get_dedup_model()
@@ -306,7 +306,7 @@ def _compute_embedding(text: str):
     return vec.astype(np.float32)
 
 
-def _load_existing_fact_embeddings(conn: sqlite3.Connection):
+def _load_existing_fact_embeddings(conn: sqlite3.Connection) -> tuple[list[dict], Any]:
     """Load existing facts with their embeddings.
 
     Prefers pre-computed embeddings from fact_embeddings table.

@@ -8,7 +8,7 @@ query functions used across mcp_server, claude_recall, inject, distill, etc.
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 MEMORY_DIR = Path(__file__).parent.parent
 DB_PATH = MEMORY_DIR / "memory.db"
@@ -262,7 +262,7 @@ def list_recent_sessions(conn: sqlite3.Connection,
     return [dict(r) for r in rows]
 
 
-def search_facts_semantic(conn: sqlite3.Connection, query_vec,
+def search_facts_semantic(conn: sqlite3.Connection, query_vec: Any,
                           category: Optional[str] = None,
                           project: Optional[str] = None,
                           limit: int = 10) -> list[dict]:

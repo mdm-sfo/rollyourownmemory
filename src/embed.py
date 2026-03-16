@@ -7,7 +7,7 @@ import numpy as np
 import sqlite3
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 try:
     from src.memory_db import get_conn
@@ -47,7 +47,7 @@ def _get_faiss():
         return None
 
 
-def get_model(model_name: str = DEFAULT_MODEL):
+def get_model(model_name: str = DEFAULT_MODEL) -> Any:
     """Load an embedding model. Accepts short names (minilm, mpnet)
     or full model names from sentence-transformers."""
     # Check registry first
