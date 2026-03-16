@@ -1,25 +1,14 @@
 # Environment
 
-## Required
+**What belongs here:** Required env vars, external dependencies, setup notes.
+**What does NOT belong here:** Service ports/commands (use `.factory/services.yaml`).
 
-- Python 3.12 in `.venv/`
-- FastAPI + uvicorn + starlette (installed in .venv)
-- SQLite with FTS5 support (system default)
-- memory.db in project root
+---
 
-## Optional (for full functionality)
-
-- ollama at localhost:11434 with llama3.3:70b (for Ask mode LLM synthesis)
-- sentence-transformers + numpy (for semantic search)
-- FAISS index file: memory.faiss + memory_ids.json
-
-## Ports
-
-- 8585: Web app (FastAPI + uvicorn)
-- 11434: ollama (pre-existing, not managed by this app)
-
-## Files
-
-- `~/.claude/CLAUDE.md` — User's global Claude Code instructions (read/write)
-- `~/.claude/memory-context.md` — Auto-generated context (read-only, regenerated via inject.py)
-- `memory.db` — SQLite database (read/write)
+- Python 3.12.3 on Ubuntu (DGX Spark, 128GB unified memory, 20 cores)
+- Virtual environment: `/home/matthewmurray/claude-memory/.venv`
+- SQLite database (production): `/home/matthewmurray/claude-memory/memory.db`
+- FAISS index: `/home/matthewmurray/claude-memory/memory.faiss` + `memory_ids.json`
+- Ollama running at `http://localhost:11434` with `llama3.3:70b` loaded
+- Sentence-transformers installed with `all-MiniLM-L6-v2` (384-dim, default)
+- Optional: `all-mpnet-base-v2` (768-dim) available via sentence-transformers

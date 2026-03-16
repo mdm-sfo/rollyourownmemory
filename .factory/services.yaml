@@ -1,12 +1,18 @@
 commands:
-  install: .venv/bin/python -m pip install fastapi
-  test: .venv/bin/python -m pytest tests/ -v
-  start_web: cd /home/matthewmurray/claude-memory && .venv/bin/python -m uvicorn src.web:app --host 0.0.0.0 --port 8585
+  install: cd /home/matthewmurray/claude-memory && source .venv/bin/activate && pip install -e ".[all,dev]"
+  test: cd /home/matthewmurray/claude-memory && source .venv/bin/activate && pytest tests/ -v
+  typecheck: "echo 'No typecheck configured (pure Python project)'"
+  lint: "echo 'No linter configured'"
+  schema_validate: sqlite3 :memory: < /home/matthewmurray/claude-memory/schema.sql
+  ast_check: |
+    cd /home/matthewmurray/claude-memory && for f in src/distill.py src/embed.py src/mcp_server.py src/memory_db.py src/web.py; do
+      python3 -c "import ast; ast.parse(open('$f').read()); print('$f: OK')"
+    done
 
 services:
   web:
-    start: cd /home/matthewmurray/claude-memory && .venv/bin/python -m uvicorn src.web:app --host 0.0.0.0 --port 8585 &
-    stop: lsof -ti :8585 | xargs kill 2>/dev/null || true
+    start: cd /home/matthewmurray/claude-memory && source .venv/bin/activate && uvicorn src.web:app --host 0.0.0.0 --port 8585
+    stop: lsof -ti :8585 | xargs kill
     healthcheck: curl -sf http://localhost:8585/api/health
     port: 8585
     depends_on: []
