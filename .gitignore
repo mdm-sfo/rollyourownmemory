@@ -24,3 +24,6 @@ __pycache__/
 
 # OS
 .DS_Store
+
+# Auto-generated memory context
+memory-context.md
