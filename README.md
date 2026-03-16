@@ -61,7 +61,9 @@ Protocols:      ssh(77x), http(76x), websocket(20x)
 │  CLAUDE.md ──▶ @memory-context.md (auto-generated)      │
 │                                                          │
 │  MCP Tools:  memory_search, memory_semantic_search,      │
-│              memory_search_facts, memory_add_fact,        │
+│              memory_search_facts,                         │
+│              memory_search_facts_semantic,                │
+│              memory_add_fact,                             │
 │              memory_get_session, memory_list_sessions,    │
 │              memory_find_entity, memory_inspect,          │
 │              memory_deep_recall, memory_resume_context,   │
@@ -84,6 +86,7 @@ Protocols:      ssh(77x), http(76x), websocket(20x)
 │  messages     — raw conversation messages + FTS5 index    │
 │  embeddings   — sentence-transformer vectors (float32)    │
 │  facts        — extracted preferences, decisions, etc.    │
+│  fact_embeddings — vectors for individual facts           │
 │  entities     — tools, libraries, services mentioned      │
 │  entity_mentions — links entities to messages/sessions    │
 └──────────┬────────────┬────────────┬─────────────────────┘
@@ -103,14 +106,14 @@ Protocols:      ssh(77x), http(76x), websocket(20x)
 |------|---------|
 | `schema.sql` | SQLite schema: messages, embeddings, facts, entities with FTS5 indexes |
 | `src/ingest.py` | ETL pipeline: reads Claude Code JSONL logs → SQLite. Incremental via byte-offset cursors. |
-| `src/embed.py` | Generates sentence-transformer embeddings for semantic search. |
-| `src/distill.py` | Extracts structured facts from conversations using regex heuristics + local LLM (ollama). Includes dedup (embedding-similarity deduplication), cross-project pattern detection, error/solution categorization, and compressed_details extraction. |
+| `src/embed.py` | Generates sentence-transformer embeddings for semantic search. Model registry with short names (`minilm`, `mpnet`). `--reembed` flag to switch models. Dimension-mismatch safety for mixed-model databases. |
+| `src/distill.py` | Extracts structured facts from conversations using regex heuristics + local LLM (ollama). Includes dedup (embedding-similarity deduplication), cross-project pattern detection, error/solution categorization, compressed_details extraction, conversation segmentation, and `backfill_embeddings` for existing facts. |
 | `src/entities.py` | Identifies tools, libraries, languages, platforms mentioned across conversations. |
 | `src/inject.py` | Generates `memory-context.md` for passive injection into CLAUDE.md. Project-aware via `$PWD`. |
 | `src/curate.py` | Interactive fact review, hand-curation, import/export. |
 | `bin/claude-recall` | CLI search tool: keyword, semantic, sessions, facts. Backward-compatible with bare queries. |
-| `src/mcp_server.py` | MCP server exposing memory tools: search, facts, inspect, deep recall, resume context, feedback. |
-| `src/web.py` | FastAPI web UI: browser-based search, fact curation, CLAUDE.md editor, context preview. |
+| `src/mcp_server.py` | MCP server exposing memory tools: search, facts, semantic fact search, inspect, deep recall, resume context, feedback. |
+| `src/web.py` | FastAPI web UI: browser-based search (including semantic fact search in Ask mode), fact curation, CLAUDE.md editor, context preview. |
 | `static/` | Frontend assets (HTML, CSS, JS) for the web UI. |
 
 ## Setup
@@ -347,6 +350,13 @@ Claude Code calls these automatically when relevant. You can also ask directly. 
 >
 > Claude searches facts, finds "Decision: using JWT with refresh tokens" with compressed details listing "cookie config, rotation logic, logout invalidation". Claude calls `memory_inspect` to get the source message, then `memory_deep_recall` to synthesize the complete answer from all related context — delivering the exact configuration without you re-explaining anything.
 
+**Find facts by meaning, not keywords:**
+> *"What did we decide about how to handle errors gracefully?"*
+>
+> `memory_search_facts_semantic` finds facts about error handling, retry logic, and fallback strategies even if they don't contain the word "error" — using vector similarity on individual fact embeddings.
+
+`memory_deep_recall` and Ask mode now combine both FTS and semantic search across facts and messages (with ID-based dedup), so you get comprehensive results from both keyword matches and meaning-based matches.
+
 ### Slash Commands (manual, in-session)
 
 ```
@@ -390,6 +400,18 @@ Claude Code calls these automatically when relevant. You can also ask directly. 
 .venv/bin/python src/distill.py patterns
 # Promote detected patterns to global facts
 .venv/bin/python src/distill.py patterns --promote
+
+# Backfill fact embeddings for existing facts
+.venv/bin/python src/distill.py backfill_embeddings
+
+# Clear and re-embed all messages with a new model
+.venv/bin/python src/embed.py build --reembed
+
+# Use an alternative embedding model for dedup
+.venv/bin/python src/distill.py run --embed-model mpnet
+
+# Disable conversation segmentation
+.venv/bin/python src/distill.py run --no-segment
 ```
 
 ### Fact Curation
@@ -427,8 +449,8 @@ Then open http://localhost:8585 in your browser.
 
 ### Features
 
-- **Search** — Full-text search across messages, facts, and sessions. Toggle semantic search for meaning-based results.
-- **Ask** — Get LLM-synthesized answers from your memory with source citations (requires ollama).
+- **Search** — Full-text search across messages, facts, and sessions. Toggle semantic search for meaning-based results. When semantic search is enabled, semantic fact matches are included alongside message results.
+- **Ask** — Get LLM-synthesized answers from your memory with source citations (requires ollama). Uses both FTS and semantic search for facts and messages to gather comprehensive context.
 - **Fact Management** — Browse, filter, edit, and delete facts. Adjust confidence scores. Filter by category, project, or confidence range.
 - **CLAUDE.md Editor** — Edit your `~/.claude/CLAUDE.md` with live markdown preview.
 - **Context Preview** — See what `inject.py` would generate for `memory-context.md`. Adjust token budget and project filter.
@@ -507,6 +529,7 @@ Then filter by user in `inject.py` to show only relevant facts, or show all fact
 messages        — id, source_file, session_id, project, role, content, timestamp, machine
 embeddings      — message_id, embedding (float32 blob), model
 facts           — id, session_id, project, fact, category, confidence, source_message_id, compressed_details
+fact_embeddings — fact_id, embedding (float32 blob), model
 entities        — id, name, entity_type, first_seen, last_seen, mention_count
 entity_mentions — id, entity_id, message_id, session_id, timestamp
 ```
@@ -528,13 +551,50 @@ FTS5 indexes on `messages.content` and `facts.fact` for fast keyword search. Por
 
 ### Embedding Model
 
-Default: `all-MiniLM-L6-v2` (fast, 384 dimensions, ~90MB). To use a different model:
+Default: `all-MiniLM-L6-v2` (fast, 384 dimensions, ~90MB).
+
+The model registry (`EMBEDDING_MODELS` in `embed.py`) supports short names for convenience:
+
+| Short Name | Full Model Name | Dimensions |
+|------------|----------------|------------|
+| `minilm` | `all-MiniLM-L6-v2` | 384 |
+| `mpnet` | `all-mpnet-base-v2` | 768 |
+
+You can use either the short name or the full model name:
 
 ```bash
+# Using short name
+.venv/bin/python src/embed.py build --model mpnet
+
+# Using full name
 .venv/bin/python src/embed.py build --model all-mpnet-base-v2
 ```
 
-Note: changing models requires re-embedding all messages.
+**Switching models:** Use the `--reembed` flag to clear existing embeddings and re-embed all messages with a new model:
+
+```bash
+.venv/bin/python src/embed.py build --model mpnet --reembed
+```
+
+**Backfilling fact embeddings:** After upgrading, backfill embeddings for existing facts:
+
+```bash
+.venv/bin/python src/distill.py backfill_embeddings
+```
+
+**Dimension-mismatch safety:** If the database contains embeddings from a different model (different vector dimensions), brute-force and FAISS search will detect the mismatch and handle it gracefully instead of crashing. A warning is logged when a model change is detected.
+
+### Conversation Segmentation
+
+Long sessions are automatically split into topically coherent segments before fact extraction. The segmentation uses cosine drift detection between consecutive user messages to identify topic shifts.
+
+This is **enabled by default** during `distill.py run`. To disable it:
+
+```bash
+.venv/bin/python src/distill.py run --no-segment
+```
+
+Segmentation improves fact extraction quality for long, multi-topic sessions by giving the LLM focused chunks of conversation rather than a single large transcript.
 
 ### LLM for Distillation
 
