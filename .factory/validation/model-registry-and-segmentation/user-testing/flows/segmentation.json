@@ -1,0 +1,40 @@
+{
+  "groupId": "segmentation",
+  "testedAt": "2026-03-16T00:00:00Z",
+  "isolation": {
+    "projectRoot": "/home/matthewmurray/claude-memory",
+    "pythonVenv": "/home/matthewmurray/claude-memory/.venv",
+    "database": "in-memory SQLite (no shared state)"
+  },
+  "toolsUsed": ["pytest", "grep", "cli"],
+  "assertions": {
+    "VAL-SEG-001": {
+      "status": "pass",
+      "evidence": "pytest: 4 tests in TestSegmentSessionShort all pass — test_short_session_returns_single_segment, test_exactly_min_threshold_returns_single_segment, test_empty_session_returns_single_segment, test_no_user_messages_returns_single_segment. Code: _segment_session checks len(user_messages) < min_segment_size * 2 and returns [messages] early.",
+      "details": "Sessions with <8 user messages (default min_segment_size=4, threshold=4*2=8) return the full session as a single segment. Verified with 3-message, 7-message, 0-message, and assistant-only sessions."
+    },
+    "VAL-SEG-002": {
+      "status": "pass",
+      "evidence": "pytest: 2 tests in TestSegmentSessionBoundaryDetection pass — test_detects_topic_shift (mocked orthogonal topic embeddings produce >=2 segments), test_no_boundaries_returns_single_segment (similar embeddings produce 1 segment). Code: consecutive cosine similarities computed and splits triggered when sim < (1 - drift_threshold).",
+      "details": "Topic boundary detection uses cosine similarity between consecutive user-message embeddings. When similarity drops below the threshold (default 0.7 = 1.0 - 0.3), a segment boundary is created. Verified with orthogonalized topic vectors and uniform-topic vectors."
+    },
+    "VAL-SEG-003": {
+      "status": "pass",
+      "evidence": "pytest: test_small_segments_merged passes — a 2-message tangent between two 6-message topic blocks is merged with predecessor. Code: segments with len < min_segment_size are merged via segments[-1].extend(segment).",
+      "details": "Small segments (below min_segment_size=4) are merged with the previous segment. The last segment also gets merged if small. All non-last segments verified to have >= min_segment_size messages."
+    },
+    "VAL-SEG-004": {
+      "status": "pass",
+      "evidence": "pytest: 5 tests in TestDistillSegmentDefault pass — test_distill_has_segment_param, test_distill_segment_defaults_true (inspect.signature confirms default=True), test_distill_calls_segment_when_llm (_segment_session called when use_llm=True+segment=True), test_distill_skips_segment_when_false (_segment_session not called when segment=False), test_distill_no_segment_when_no_llm (_segment_session not called when use_llm=False). Code inspection: distill() signature is 'segment: bool = True' at line 778.",
+      "details": "distill() has segment=True as default. When use_llm=True and segment=True, _segment_session is called to split the session before LLM extraction. Cross-segment dedup also verified (existing_facts extended between segments)."
+    },
+    "VAL-SEG-005": {
+      "status": "pass",
+      "evidence": "pytest: test_run_help_shows_no_segment and test_no_segment_in_argparse both pass. CLI: 'python3 src/distill.py run --help' shows '--no-segment' flag with description 'Disable conversation segmentation (send full sessions to LLM)'. Code: argparse has '--no-segment' (store_true, line 855), passed as 'segment=not getattr(args, \"no_segment\", False)' (line 886).",
+      "details": "--no-segment flag is registered in argparse and correctly inverts to segment=False when passed to distill()."
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 5 assertions: 5 passed, 0 failed. All 21 segmentation tests pass. Code inspection confirms correct implementation of _segment_session, default segment=True in distill(), and --no-segment CLI flag."
+}

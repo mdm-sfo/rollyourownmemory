@@ -1,0 +1,61 @@
+{
+  "groupId": "registry-dim-dedup",
+  "testedAt": "2026-03-16T00:00:00Z",
+  "isolation": {
+    "projectRoot": "/home/matthewmurray/claude-memory",
+    "pythonVenv": "/home/matthewmurray/claude-memory/.venv",
+    "database": "in-memory SQLite (no shared state)",
+    "productionDbModified": false
+  },
+  "toolsUsed": ["pytest", "cli", "grep"],
+  "assertions": {
+    "VAL-REGISTRY-001": {
+      "status": "pass",
+      "evidence": "model-registry-and-segmentation/registry-dim-dedup/pytest-output.txt, model-registry-and-segmentation/registry-dim-dedup/import-check.txt",
+      "details": "8 unit tests in TestEmbeddingModelsRegistry all pass. EMBEDDING_MODELS has keys 'minilm' and 'mpnet', each with name, dim, backend, description. minilm.name='all-MiniLM-L6-v2' dim=384, mpnet.name='all-mpnet-base-v2' dim=768."
+    },
+    "VAL-REGISTRY-002": {
+      "status": "pass",
+      "evidence": "model-registry-and-segmentation/registry-dim-dedup/pytest-output.txt",
+      "details": "4 unit tests in TestGetModelShortNames all pass. get_model('mpnet') resolves to SentenceTransformer('all-mpnet-base-v2'), get_model('minilm') resolves to SentenceTransformer('all-MiniLM-L6-v2'). Full model names also work."
+    },
+    "VAL-REGISTRY-003": {
+      "status": "pass",
+      "evidence": "model-registry-and-segmentation/registry-dim-dedup/pytest-output.txt, model-registry-and-segmentation/registry-dim-dedup/import-check.txt",
+      "details": "TestDefaultModelUnchanged::test_default_model_value passes. DEFAULT_MODEL == 'all-MiniLM-L6-v2' confirmed via both unit test and direct import check. get_model() with no args loads this default."
+    },
+    "VAL-DIM-001": {
+      "status": "pass",
+      "evidence": "model-registry-and-segmentation/registry-dim-dedup/pytest-output.txt",
+      "details": "5 unit tests in TestSearchBruteforceDimensionSafety all pass. Tests verify: 384-dim query with 768-dim stored (returns empty, no crash), 768-dim query with 384-dim stored (returns empty, no crash), warning message printed on stderr mentioning 'skipped' and '--reembed', matching-dim results returned normally, mixed-dim returns only matching."
+    },
+    "VAL-DIM-002": {
+      "status": "pass",
+      "evidence": "model-registry-and-segmentation/registry-dim-dedup/pytest-output.txt",
+      "details": "2 unit tests in TestSearchFaissDimensionCheck pass. _search_faiss returns None when FAISS index dim (384) doesn't match query dim (768). Warning about dimension mismatch printed to stderr. Code inspection confirms: `if index.d != query_vec.shape[0]: ... return None`."
+    },
+    "VAL-DIM-003": {
+      "status": "pass",
+      "evidence": "model-registry-and-segmentation/registry-dim-dedup/pytest-output.txt, model-registry-and-segmentation/registry-dim-dedup/cli-embed-build-help.txt",
+      "details": "4 tests in TestReembedFlag pass. CLI help shows --reembed flag. Code inspection confirms: --reembed deletes from embeddings, fact_embeddings, and processed_messages tables, then removes FAISS_INDEX_PATH and FAISS_IDS_PATH files."
+    },
+    "VAL-DIM-004": {
+      "status": "pass",
+      "evidence": "model-registry-and-segmentation/registry-dim-dedup/pytest-output.txt",
+      "details": "TestModelChangeDetection::test_warns_on_model_mismatch passes. embed_messages() queries distinct models from embeddings table and prints WARNING to stderr when existing model differs from current model, including suggestion to run --reembed."
+    },
+    "VAL-DEDUP-001": {
+      "status": "pass",
+      "evidence": "model-registry-and-segmentation/registry-dim-dedup/pytest-output.txt, model-registry-and-segmentation/registry-dim-dedup/cli-distill-run-help.txt",
+      "details": "TestDistillEmbedModelFlag::test_run_help_shows_embed_model passes. `distill.py run --help` output confirms --embed-model flag with description: 'Embedding model for dedup (minilm, mpnet). Default: match embed.py default.'"
+    },
+    "VAL-DEDUP-002": {
+      "status": "pass",
+      "evidence": "model-registry-and-segmentation/registry-dim-dedup/pytest-output.txt",
+      "details": "2 tests in TestGetDedupModelParam pass. _get_dedup_model(model_name='mpnet') calls get_model('mpnet'). _get_dedup_model() with no args calls get_model('all-MiniLM-L6-v2') (the DEFAULT_MODEL)."
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 9 assertions: 9 passed, 0 failed. All 28 unit tests in test_model_registry.py pass. CLI help outputs confirm --reembed and --embed-model flags. Import checks confirm EMBEDDING_MODELS dict structure and DEFAULT_MODEL value."
+}

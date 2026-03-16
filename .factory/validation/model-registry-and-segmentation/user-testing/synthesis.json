@@ -1,0 +1,41 @@
+{
+  "milestone": "model-registry-and-segmentation",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 24,
+    "passed": 24,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-REGISTRY-001",
+    "VAL-REGISTRY-002",
+    "VAL-REGISTRY-003",
+    "VAL-DIM-001",
+    "VAL-DIM-002",
+    "VAL-DIM-003",
+    "VAL-DIM-004",
+    "VAL-DEDUP-001",
+    "VAL-DEDUP-002",
+    "VAL-SEG-001",
+    "VAL-SEG-002",
+    "VAL-SEG-003",
+    "VAL-SEG-004",
+    "VAL-SEG-005",
+    "VAL-ENHANCE-001",
+    "VAL-ENHANCE-002",
+    "VAL-ENHANCE-003",
+    "VAL-ENHANCE-004",
+    "VAL-ENHANCE-005",
+    "VAL-CROSS-001",
+    "VAL-CROSS-002",
+    "VAL-CROSS-003",
+    "VAL-CROSS-004",
+    "VAL-CROSS-005"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null
+}

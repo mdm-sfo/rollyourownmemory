@@ -1,0 +1,66 @@
+{
+  "groupId": "semantic-enhance-cross",
+  "testedAt": "2026-03-16T00:00:00Z",
+  "isolation": {
+    "projectRoot": "/home/matthewmurray/claude-memory",
+    "pythonVenv": "/home/matthewmurray/claude-memory/.venv",
+    "webService": "http://localhost:8585",
+    "testsUseInMemorySQLite": true
+  },
+  "toolsUsed": ["grep", "pytest", "cli", "code-inspection", "ast-parse"],
+  "assertions": {
+    "VAL-ENHANCE-001": {
+      "status": "pass",
+      "evidence": "model-registry-and-segmentation/semantic-enhance-cross/VAL-ENHANCE-001-005-code-inspection.txt",
+      "details": "_gather_ask_context() in web.py calls search_facts_semantic(conn, query_vec, ...) after FTS fact search, deduplicates using seen_fact_ids set. Unit test test_gather_ask_context_calls_search_facts_semantic passes."
+    },
+    "VAL-ENHANCE-002": {
+      "status": "pass",
+      "evidence": "model-registry-and-segmentation/semantic-enhance-cross/VAL-ENHANCE-001-005-code-inspection.txt",
+      "details": "_gather_ask_context() in web.py calls _semantic_search(query, conn, ...) after FTS message search, deduplicates using seen_msg_ids set. Unit test test_gather_ask_context_includes_semantic_messages passes."
+    },
+    "VAL-ENHANCE-003": {
+      "status": "pass",
+      "evidence": "model-registry-and-segmentation/semantic-enhance-cross/VAL-ENHANCE-001-005-code-inspection.txt",
+      "details": "Both seen_fact_ids and seen_msg_ids sets are used. FTS results added first, semantic results only appended when ID not in seen set. Unit tests test_gather_ask_context_deduplicates_facts_by_id and test_gather_ask_context_deduplicates_messages_by_id both pass."
+    },
+    "VAL-ENHANCE-004": {
+      "status": "pass",
+      "evidence": "model-registry-and-segmentation/semantic-enhance-cross/VAL-ENHANCE-001-005-code-inspection.txt",
+      "details": "memory_deep_recall() in mcp_server.py has Step 1b after FTS: calls _search_facts_semantic(conn, query_vec, limit=5), deduplicates against existing fact_lines by parsing fact IDs into seen_ids set, appends new results."
+    },
+    "VAL-ENHANCE-005": {
+      "status": "pass",
+      "evidence": "model-registry-and-segmentation/semantic-enhance-cross/VAL-ENHANCE-001-005-code-inspection.txt",
+      "details": "memory_deep_recall() in mcp_server.py has Step 2b after FTS: calls _search_similar(query, conn=conn, top_k=5, ...), deduplicates against existing msg_lines by string comparison, appends new results."
+    },
+    "VAL-CROSS-001": {
+      "status": "pass",
+      "evidence": "model-registry-and-segmentation/semantic-enhance-cross/VAL-CROSS-001-pytest-summary.txt",
+      "details": "pytest tests/ -v: 257 passed, 0 failed, 3 warnings (deprecation only). 166 original + 91 new tests all pass."
+    },
+    "VAL-CROSS-002": {
+      "status": "pass",
+      "evidence": "model-registry-and-segmentation/semantic-enhance-cross/VAL-CROSS-002-llm-defaults.txt",
+      "details": "llama3.3:70b confirmed as default in: web.py OLLAMA_MODEL, mcp_server.py deep_recall model, distill.py extract_facts_llm(), distill(), detect_cross_project_patterns(), and CLI argparse defaults."
+    },
+    "VAL-CROSS-003": {
+      "status": "pass",
+      "evidence": "model-registry-and-segmentation/semantic-enhance-cross/VAL-CROSS-003-embedding-default.txt",
+      "details": "embed.py:22 has DEFAULT_MODEL = \"all-MiniLM-L6-v2\". Other files (distill.py) import DEFAULT_MODEL but never override it."
+    },
+    "VAL-CROSS-004": {
+      "status": "pass",
+      "evidence": "model-registry-and-segmentation/semantic-enhance-cross/VAL-CROSS-004-type-hints.txt",
+      "details": "All 5 newly added functions have full type hints: _get_dedup_model(model_name: Optional[str]) -> Any, _compute_embedding(text: str) -> Any, _load_existing_fact_embeddings(conn: Connection) -> tuple[list[dict], Any], get_model(model_name: str) -> Any, search_facts_semantic(conn: Connection, query_vec: Any, ...) -> list[dict]."
+    },
+    "VAL-CROSS-005": {
+      "status": "pass",
+      "evidence": "model-registry-and-segmentation/semantic-enhance-cross/VAL-CROSS-005-ast-parse.txt",
+      "details": "All 5 modified Python files (distill.py, embed.py, mcp_server.py, memory_db.py, web.py) parse without syntax errors via ast.parse()."
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 10 assertions: 10 passed, 0 failed. All semantic search enhancements (ENHANCE-001 through 005) verified via code inspection and unit tests. All cross-area checks (CROSS-001 through 005) confirmed: 257 tests pass, default models unchanged, type hints present, all files parse correctly."
+}
