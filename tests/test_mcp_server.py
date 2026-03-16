@@ -196,3 +196,138 @@ class TestMemorySearchFactsSemantic:
             result = memory_search_facts_semantic("nonexistent query")
 
         assert "No semantic fact matches" in result
+
+
+class TestMemoryDeepRecallSemanticFacts:
+    """VAL-ENHANCE-004: memory_deep_recall includes semantic fact search (Step 1b)."""
+
+    def test_deep_recall_includes_semantic_facts(self, mcp_db: Path) -> None:
+        """After FTS facts, semantic fact results are appended."""
+        from src.mcp_server import memory_deep_recall
+
+        mock_model = MagicMock()
+        vec = np.random.randn(384).astype(np.float32)
+        vec = vec / np.linalg.norm(vec)
+        mock_model.encode.return_value = np.array([vec])
+
+        sem_facts = [{
+            "id": 42,
+            "fact": "Semantic-only fact about Express CORS config",
+            "category": "tool",
+            "confidence": 0.85,
+            "project": "/home/user/proj",
+            "timestamp": "2024-01-01",
+            "compressed_details": None,
+            "score": 0.8,
+        }]
+
+        with patch("src.embed.get_model", return_value=mock_model), \
+             patch("src.memory_db.search_facts_semantic", return_value=sem_facts):
+            result = memory_deep_recall("CORS", synthesize=False)
+
+        # The semantic fact should appear in the output
+        assert "Semantic-only fact about Express CORS config" in result
+
+    def test_deep_recall_deduplicates_semantic_facts_by_id(self, mcp_db: Path) -> None:
+        """Semantic facts that already appear in FTS results are not duplicated."""
+        from src.mcp_server import memory_deep_recall
+
+        # Get the actual fact ID from the mcp_db
+        conn = sqlite3.connect(str(mcp_db))
+        conn.row_factory = sqlite3.Row
+        fact_row = conn.execute("SELECT id, fact FROM facts LIMIT 1").fetchone()
+        conn.close()
+        actual_fact_id = fact_row["id"]
+
+        mock_model = MagicMock()
+        vec = np.random.randn(384).astype(np.float32)
+        vec = vec / np.linalg.norm(vec)
+        mock_model.encode.return_value = np.array([vec])
+
+        # Semantic returns same fact that FTS already found
+        sem_facts = [{
+            "id": actual_fact_id,
+            "fact": "User configures CORS in Express using cors middleware",
+            "category": "tool",
+            "confidence": 0.9,
+            "project": "/home/user/proj",
+            "timestamp": "2024-01-01",
+            "compressed_details": "exact config values",
+            "score": 0.9,
+        }]
+
+        with patch("src.embed.get_model", return_value=mock_model), \
+             patch("src.memory_db.search_facts_semantic", return_value=sem_facts):
+            result = memory_deep_recall("CORS", synthesize=False)
+
+        # The fact text should appear exactly once in the result
+        count = result.count("configures CORS in Express")
+        assert count == 1, f"Expected fact to appear exactly once, got {count} times"
+
+    def test_deep_recall_semantic_facts_graceful_failure(self, mcp_db: Path) -> None:
+        """Semantic fact search failure doesn't crash deep_recall."""
+        from src.mcp_server import memory_deep_recall
+
+        with patch("src.embed.get_model", side_effect=ImportError("no sentence-transformers")):
+            result = memory_deep_recall("CORS", synthesize=False)
+            # Should still have FTS results
+            assert "CORS" in result
+            assert "Deep Recall" in result
+
+
+class TestMemoryDeepRecallSemanticMessages:
+    """VAL-ENHANCE-005: memory_deep_recall includes semantic message search (Step 2b)."""
+
+    def test_deep_recall_includes_semantic_messages(self, mcp_db: Path) -> None:
+        """After FTS messages, semantic message results are appended."""
+        from src.mcp_server import memory_deep_recall
+
+        sem_messages = [{
+            "id": 777,
+            "session_id": "sess-sem",
+            "project": "/home/user/proj",
+            "role": "assistant",
+            "content": "Unique semantic-only message about Express configuration",
+            "timestamp": "2024-02-01T00:00:00",
+            "score": 0.85,
+        }]
+
+        with patch("src.embed.search_similar", return_value=sem_messages):
+            result = memory_deep_recall("Express", synthesize=False)
+
+        # The semantic message content should appear in the output
+        assert "Unique semantic-only message" in result
+
+    def test_deep_recall_deduplicates_semantic_messages_by_string(self, mcp_db: Path) -> None:
+        """Semantic messages that duplicate FTS results (by string match) are not repeated."""
+        from src.mcp_server import memory_deep_recall
+
+        # The FTS will find "How do I configure CORS in Express?" 
+        # Return a semantic result with same content
+        sem_messages = [{
+            "id": 1,
+            "session_id": "sess-1",
+            "project": "/home/user/proj",
+            "role": "user",
+            "content": "How do I configure CORS in Express?",
+            "timestamp": "2024-01-01T00:00:00",
+            "score": 0.95,
+        }]
+
+        with patch("src.embed.search_similar", return_value=sem_messages):
+            result = memory_deep_recall("CORS", synthesize=False)
+
+        # The message should appear at most once
+        count = result.count("configure CORS in Express")
+        assert count == 1, f"Expected message to appear once, got {count} times"
+
+    def test_deep_recall_semantic_messages_graceful_failure(self, mcp_db: Path) -> None:
+        """Semantic message search failure doesn't crash deep_recall."""
+        from src.mcp_server import memory_deep_recall
+
+        # Make search_similar import fail
+        with patch("src.embed.search_similar", side_effect=Exception("search failed")):
+            result = memory_deep_recall("CORS", synthesize=False)
+            # Should still work with FTS results
+            assert "CORS" in result
+            assert "Deep Recall" in result

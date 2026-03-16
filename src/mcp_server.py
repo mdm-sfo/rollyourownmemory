@@ -321,11 +321,11 @@ def memory_deep_recall(query: str, synthesize: bool = True, limit: int = 10,
     """
     conn = get_conn()
 
-    # Step 1: Find relevant facts
+    # Step 1: Find relevant facts via FTS
     fact_lines = []
     try:
         sql = """
-            SELECT f.fact, f.category, f.session_id, f.compressed_details
+            SELECT f.id, f.fact, f.category, f.session_id, f.compressed_details
             FROM facts_fts
             JOIN facts f ON f.id = facts_fts.rowid
             WHERE facts_fts MATCH ? AND f.confidence > 0
@@ -340,9 +340,45 @@ def memory_deep_recall(query: str, synthesize: bool = True, limit: int = 10,
                     compressed = f" (compressed: {cd})"
             except (IndexError, KeyError):
                 pass
-            fact_lines.append(f"- [{r['category']}] {r['fact']}{compressed}")
+            fact_lines.append(f"- [#{r['id']}] [{r['category']}] {r['fact']}{compressed}")
     except sqlite3.OperationalError:
         pass
+
+    # Step 1b: Semantic fact search (complements FTS)
+    _search_facts_semantic = None
+    _get_model = None
+    try:
+        from embed import get_model as _get_model
+        from memory_db import search_facts_semantic as _search_facts_semantic
+    except ImportError:
+        try:
+            from src.embed import get_model as _get_model
+            from src.memory_db import search_facts_semantic as _search_facts_semantic
+        except ImportError:
+            pass
+
+    if _search_facts_semantic and _get_model:
+        try:
+            model = _get_model()
+            query_vec = model.encode([query[:2048]], normalize_embeddings=True)[0]
+            sem_facts = _search_facts_semantic(conn, query_vec, limit=5)
+            # Deduplicate against FTS results using fact IDs from existing fact_lines
+            seen_ids: set = set()
+            for line in fact_lines:
+                if "[#" in line:
+                    try:
+                        seen_ids.add(int(line.split("#")[1].split("]")[0]))
+                    except (ValueError, IndexError):
+                        pass
+            for r in sem_facts:
+                if r["id"] not in seen_ids:
+                    compressed = ""
+                    cd = r.get("compressed_details")
+                    if cd and cd.strip() and cd.strip() != "none":
+                        compressed = f" (compressed: {cd})"
+                    fact_lines.append(f"- [#{r['id']}] [{r['category']}] {r['fact']}{compressed}")
+        except Exception:
+            pass  # Semantic search unavailable
 
     # Step 2: Find relevant messages via FTS
     msg_lines = []
@@ -368,6 +404,31 @@ def memory_deep_recall(query: str, synthesize: bool = True, limit: int = 10,
             msg_lines.append(f"[{ts}] {proj} ({r['role']}): {content}")
     except sqlite3.OperationalError:
         pass
+
+    # Step 2b: Semantic message search (complements FTS)
+    _search_similar = None
+    try:
+        from embed import search_similar as _search_similar
+    except ImportError:
+        try:
+            from src.embed import search_similar as _search_similar
+        except ImportError:
+            pass
+
+    if _search_similar:
+        try:
+            sem_results = _search_similar(query, conn=conn, top_k=5, project=project,
+                                          decay_halflife_days=30)
+            for r in (sem_results or []):
+                content = r.get("content", "")
+                content = content[:600] + "..." if len(content) > 600 else content
+                ts = (r.get("timestamp") or "")[:16]
+                proj = r.get("project") or "no-project"
+                line = f"[{ts}] {proj} ({r.get('role', '?')}): {content}"
+                if line not in msg_lines:  # Simple dedup by string
+                    msg_lines.append(line)
+        except Exception:
+            pass
 
     conn.close()
 

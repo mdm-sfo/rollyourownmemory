@@ -254,40 +254,83 @@ async def search(
     }
 
 
-def _gather_ask_context(query, project=None):
-    """Gather facts and messages for LLM synthesis (similar to memory_deep_recall)."""
+def _gather_ask_context(query: str, project: Optional[str] = None) -> tuple[list[dict], list[dict]]:
+    """Gather facts and messages for LLM synthesis using both FTS and semantic search."""
     conn = memory_db.get_conn()
 
-    # Search facts via FTS
+    # --- Fact retrieval: FTS + semantic ---
     facts = []
+    seen_fact_ids: set = set()
+
+    # FTS fact search
     try:
         rows = memory_db.search_facts_fts(conn, query, project=project, limit=5)
         for r in rows:
-            facts.append({
-                "id": r["id"],
-                "fact": r["fact"],
-                "category": r.get("category"),
-                "confidence": r.get("confidence"),
-                "compressed_details": r.get("compressed_details"),
-            })
+            fid = r["id"]
+            if fid not in seen_fact_ids:
+                seen_fact_ids.add(fid)
+                facts.append({
+                    "id": fid,
+                    "fact": r["fact"],
+                    "category": r.get("category"),
+                    "confidence": r.get("confidence"),
+                    "compressed_details": r.get("compressed_details"),
+                })
     except sqlite3.OperationalError:
         pass
 
-    # Search messages via FTS
+    # Semantic fact search
+    try:
+        from src.embed import get_model
+        model = get_model()
+        query_vec = model.encode([query[:2048]], normalize_embeddings=True)[0]
+        sem_facts = memory_db.search_facts_semantic(conn, query_vec, project=project, limit=5)
+        for r in sem_facts:
+            fid = r["id"]
+            if fid not in seen_fact_ids:
+                seen_fact_ids.add(fid)
+                facts.append({
+                    "id": fid,
+                    "fact": r["fact"],
+                    "category": r.get("category"),
+                    "confidence": r.get("confidence"),
+                    "compressed_details": r.get("compressed_details"),
+                })
+    except Exception:
+        pass  # Semantic search unavailable — proceed with FTS results only
+
+    # --- Message retrieval: FTS + semantic ---
     messages = []
+    seen_msg_ids: set = set()
+
+    # FTS message search
     try:
         rows = memory_db.search_fts(conn, query, project=project, limit=10)
         for r in rows:
-            messages.append({
-                "id": r["id"],
-                "session_id": r.get("session_id"),
-                "project": r.get("project"),
-                "role": r.get("role"),
-                "content": _truncate(r.get("content", ""), 600),
-                "timestamp": r.get("timestamp"),
-            })
+            mid = r["id"]
+            if mid not in seen_msg_ids:
+                seen_msg_ids.add(mid)
+                messages.append({
+                    "id": mid,
+                    "session_id": r.get("session_id"),
+                    "project": r.get("project"),
+                    "role": r.get("role"),
+                    "content": _truncate(r.get("content", ""), 600),
+                    "timestamp": r.get("timestamp"),
+                })
     except sqlite3.OperationalError:
         pass
+
+    # Semantic message search
+    try:
+        sem_messages = _semantic_search(query, conn, project=project, limit=5)
+        for r in sem_messages:
+            mid = r.get("id")
+            if mid and mid not in seen_msg_ids:
+                seen_msg_ids.add(mid)
+                messages.append(r)
+    except Exception:
+        pass  # Semantic search unavailable — proceed with FTS results only
 
     conn.close()
     return facts, messages

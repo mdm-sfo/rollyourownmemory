@@ -1700,3 +1700,110 @@ class TestSemanticFactsFrontend:
         resp = client.get("/static/app.js")
         js = resp.text
         assert "semantic_facts" in js
+
+
+# --- _gather_ask_context Semantic Enhancement Tests (VAL-ENHANCE-001/002/003) ---
+
+class TestGatherAskContextSemanticFacts:
+    """VAL-ENHANCE-001: _gather_ask_context includes semantic facts."""
+
+    def test_gather_ask_context_calls_search_facts_semantic(self, seeded_client):
+        """_gather_ask_context calls search_facts_semantic alongside FTS."""
+        import numpy as np
+        from src.web import _gather_ask_context
+
+        mock_model = MagicMock()
+        mock_model.encode.return_value = np.zeros((1, 384), dtype=np.float32)
+
+        with patch("src.web.memory_db.search_facts_semantic", return_value=[
+            {"id": 99, "fact": "semantic fact", "category": "tool",
+             "confidence": 0.9, "compressed_details": None}
+        ]) as mock_sem_facts, \
+             patch("src.web.get_model", mock_model, create=True), \
+             patch("src.embed.get_model", return_value=mock_model):
+            facts, messages = _gather_ask_context("test query")
+            # Check that semantic results are included in the facts list
+            fact_ids = [f["id"] for f in facts]
+            assert 99 in fact_ids
+
+    def test_gather_ask_context_deduplicates_facts_by_id(self, seeded_client):
+        """VAL-ENHANCE-003: Facts are deduplicated by ID - no duplicates from FTS + semantic."""
+        import numpy as np
+        from src.web import _gather_ask_context
+
+        mock_model = MagicMock()
+        mock_model.encode.return_value = np.zeros((1, 384), dtype=np.float32)
+
+        # Both FTS and semantic return fact with id=1
+        with patch("src.web.memory_db.search_facts_semantic", return_value=[
+            {"id": 1, "fact": "Kalshi uses docker compose for deployment",
+             "category": "tool", "confidence": 0.9, "compressed_details": "specific docker commands"}
+        ]), \
+             patch("src.embed.get_model", return_value=mock_model):
+            facts, messages = _gather_ask_context("kalshi")
+            # Fact id=1 should appear exactly once
+            fact_ids = [f["id"] for f in facts]
+            assert fact_ids.count(1) == 1
+
+    def test_gather_ask_context_semantic_facts_graceful_failure(self, seeded_client):
+        """Semantic fact search failure doesn't crash - FTS still returns results."""
+        from src.web import _gather_ask_context
+
+        with patch("src.embed.get_model", side_effect=Exception("model unavailable")):
+            facts, messages = _gather_ask_context("kalshi")
+            # FTS results should still be present
+            assert isinstance(facts, list)
+            assert isinstance(messages, list)
+            # At least the FTS facts should be found
+            assert len(facts) > 0
+
+
+class TestGatherAskContextSemanticMessages:
+    """VAL-ENHANCE-002: _gather_ask_context includes semantic messages."""
+
+    def test_gather_ask_context_includes_semantic_messages(self, seeded_client):
+        """_gather_ask_context calls _semantic_search alongside FTS for messages."""
+        import numpy as np
+        from src.web import _gather_ask_context
+
+        mock_model = MagicMock()
+        mock_model.encode.return_value = np.zeros((1, 384), dtype=np.float32)
+
+        with patch("src.web._semantic_search", return_value=[
+            {"id": 999, "session_id": "s-sem", "project": "test", "role": "user",
+             "content": "semantic message result", "timestamp": "2024-01-01", "score": 0.9}
+        ]) as mock_sem, \
+             patch("src.embed.get_model", return_value=mock_model), \
+             patch("src.web.memory_db.search_facts_semantic", return_value=[]):
+            facts, messages = _gather_ask_context("test query")
+            msg_ids = [m["id"] for m in messages]
+            assert 999 in msg_ids
+
+    def test_gather_ask_context_deduplicates_messages_by_id(self, seeded_client):
+        """VAL-ENHANCE-003: Messages are deduplicated by ID."""
+        import numpy as np
+        from src.web import _gather_ask_context
+
+        mock_model = MagicMock()
+        mock_model.encode.return_value = np.zeros((1, 384), dtype=np.float32)
+
+        # Both FTS and semantic return message with id=1
+        with patch("src.web._semantic_search", return_value=[
+            {"id": 1, "session_id": "sess-001", "project": "kalshi", "role": "user",
+             "content": "How do I deploy kalshi to production?", "timestamp": "2024-01-15T10:00:00", "score": 0.8}
+        ]), \
+             patch("src.embed.get_model", return_value=mock_model), \
+             patch("src.web.memory_db.search_facts_semantic", return_value=[]):
+            facts, messages = _gather_ask_context("kalshi deploy")
+            msg_ids = [m["id"] for m in messages]
+            assert msg_ids.count(1) == 1
+
+    def test_gather_ask_context_semantic_messages_graceful_failure(self, seeded_client):
+        """Semantic message search failure doesn't crash."""
+        from src.web import _gather_ask_context
+
+        with patch("src.web._semantic_search", side_effect=Exception("search failed")), \
+             patch("src.embed.get_model", side_effect=Exception("model unavailable")):
+            facts, messages = _gather_ask_context("kalshi")
+            # FTS results should still be present
+            assert isinstance(messages, list)
