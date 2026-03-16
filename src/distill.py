@@ -302,12 +302,14 @@ def _compute_embedding(text: str):
 
 
 def _load_existing_fact_embeddings(conn: sqlite3.Connection):
-    """Load existing facts with confidence > 0 and compute their embeddings on the fly.
+    """Load existing facts with their embeddings.
 
+    Prefers pre-computed embeddings from fact_embeddings table.
+    Falls back to on-the-fly encoding for facts missing embeddings.
     Returns (facts_list, embeddings_matrix) where embeddings_matrix is (N, dim).
-    Returns empty lists/array if no qualifying facts exist.
     """
     import numpy as np
+
     rows = conn.execute(
         "SELECT id, fact, confidence FROM facts WHERE confidence > 0"
     ).fetchall()
@@ -315,10 +317,41 @@ def _load_existing_fact_embeddings(conn: sqlite3.Connection):
         return [], np.array([])
 
     facts_list = [dict(r) for r in rows]
-    model = _get_dedup_model()
-    texts = [f["fact"][:2048] for f in facts_list]
-    embeddings = model.encode(texts, show_progress_bar=False, normalize_embeddings=True)
-    return facts_list, embeddings.astype(np.float32)
+    fact_ids = [f["id"] for f in facts_list]
+
+    # Try to load persisted embeddings
+    persisted: dict[int, "np.ndarray"] = {}
+    try:
+        placeholders = ",".join("?" * len(fact_ids))
+        emb_rows = conn.execute(
+            f"SELECT fact_id, embedding FROM fact_embeddings WHERE fact_id IN ({placeholders})",
+            fact_ids,
+        ).fetchall()
+        for r in emb_rows:
+            persisted[r["fact_id"]] = np.frombuffer(r["embedding"], dtype=np.float32)
+    except sqlite3.OperationalError:
+        pass  # Table doesn't exist yet (pre-migration)
+
+    # Build embeddings array: use persisted where available, encode the rest
+    embeddings: list[Optional["np.ndarray"]] = []
+    needs_encoding: list[str] = []
+    needs_encoding_indices: list[int] = []
+
+    for i, f in enumerate(facts_list):
+        if f["id"] in persisted:
+            embeddings.append(persisted[f["id"]])
+        else:
+            needs_encoding.append(f["fact"][:2048])
+            needs_encoding_indices.append(i)
+            embeddings.append(None)  # placeholder
+
+    if needs_encoding:
+        model = _get_dedup_model()
+        encoded = model.encode(needs_encoding, show_progress_bar=False, normalize_embeddings=True)
+        for idx, vec in zip(needs_encoding_indices, encoded):
+            embeddings[idx] = vec.astype(np.float32)
+
+    return facts_list, np.stack(embeddings).astype(np.float32)
 
 
 def _is_near_duplicate(candidate_vec, existing_embeddings,
@@ -375,6 +408,15 @@ def store_facts(conn, facts):
             # Add the newly inserted fact to existing embeddings for subsequent checks
             new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
             existing_facts.append({"id": new_id, "fact": f["fact"], "confidence": f["confidence"]})
+            # Persist the embedding we already computed for dedup
+            try:
+                from src.embed import DEFAULT_MODEL as _embed_default
+            except ImportError:
+                from embed import DEFAULT_MODEL as _embed_default
+            conn.execute(
+                "INSERT OR IGNORE INTO fact_embeddings (fact_id, embedding, model) VALUES (?, ?, ?)",
+                (new_id, candidate_vec.astype(np.float32).tobytes(), _embed_default),
+            )
             if existing_embeddings.size == 0:
                 existing_embeddings = candidate_vec.reshape(1, -1)
             else:
@@ -385,6 +427,43 @@ def store_facts(conn, facts):
     if skipped:
         print(f"Dedup: {skipped} near-duplicate fact(s) skipped.", file=sys.stderr)
     return inserted
+
+
+def backfill_fact_embeddings(db_path: Optional[str] = None) -> int:
+    """Generate and store embeddings for any facts missing from fact_embeddings."""
+    import numpy as np
+    conn = get_conn(db_path or str(DB_PATH))
+
+    rows = conn.execute("""
+        SELECT f.id, f.fact FROM facts f
+        WHERE f.confidence > 0
+        AND f.id NOT IN (SELECT fact_id FROM fact_embeddings)
+    """).fetchall()
+
+    if not rows:
+        print("All facts already have embeddings.")
+        conn.close()
+        return 0
+
+    print(f"Backfilling embeddings for {len(rows)} facts...")
+    model = _get_dedup_model()
+    try:
+        from src.embed import DEFAULT_MODEL as _embed_default
+    except ImportError:
+        from embed import DEFAULT_MODEL as _embed_default
+
+    texts = [r["fact"][:2048] for r in rows]
+    vectors = model.encode(texts, show_progress_bar=True, normalize_embeddings=True)
+
+    for row, vec in zip(rows, vectors):
+        conn.execute(
+            "INSERT OR IGNORE INTO fact_embeddings (fact_id, embedding, model) VALUES (?, ?, ?)",
+            (row["id"], vec.astype(np.float32).tobytes(), _embed_default),
+        )
+    conn.commit()
+    conn.close()
+    print(f"Done. {len(rows)} fact embeddings stored.")
+    return len(rows)
 
 
 def dedup_facts(db_path: Optional[str] = None, threshold: float = 0.85) -> int:
@@ -658,6 +737,8 @@ def main():
 
     stats = sub.add_parser("stats", help="Show distillation statistics")
 
+    sub.add_parser("backfill_embeddings", help="Generate embeddings for facts missing them")
+
     args = parser.parse_args()
 
     if args.command == "run":
@@ -745,6 +826,8 @@ def main():
         for cat, count in cats:
             print(f"  {cat}: {count}")
         conn.close()
+    elif args.command == "backfill_embeddings":
+        backfill_fact_embeddings()
     else:
         parser.print_help()
 

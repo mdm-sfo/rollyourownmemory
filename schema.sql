@@ -57,6 +57,14 @@ CREATE TABLE IF NOT EXISTS facts (
 CREATE INDEX IF NOT EXISTS idx_facts_category ON facts(category);
 CREATE INDEX IF NOT EXISTS idx_facts_project ON facts(project);
 
+-- Fact-level embeddings for semantic fact search
+CREATE TABLE IF NOT EXISTS fact_embeddings (
+    fact_id INTEGER PRIMARY KEY REFERENCES facts(id) ON DELETE CASCADE,
+    embedding BLOB NOT NULL,
+    model TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
 -- Entities and relationships extracted from conversations
 CREATE TABLE IF NOT EXISTS entities (
     id INTEGER PRIMARY KEY,

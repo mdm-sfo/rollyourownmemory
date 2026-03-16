@@ -110,6 +110,16 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
     if sentinel_count > 0:
         conn.execute("DELETE FROM entity_mentions WHERE entity_id = 0")
 
+    # Migration 6: Create fact_embeddings table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS fact_embeddings (
+            fact_id INTEGER PRIMARY KEY REFERENCES facts(id) ON DELETE CASCADE,
+            embedding BLOB NOT NULL,
+            model TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
     conn.commit()
 
 
