@@ -657,7 +657,125 @@ Return ONLY a JSON array, no other text."""
     return []
 
 
-def distill(use_llm=False, api_base=None, limit=None, model: str = "llama3.3:70b"):
+def _segment_session(messages: list[dict], drift_threshold: float = 0.3,
+                     min_segment_size: int = 4) -> list[list[dict]]:
+    """Split a session into topically coherent segments using embedding cosine drift.
+
+    Computes embeddings for each user message, then looks for drops in cosine
+    similarity between consecutive messages. A drop below (1 - drift_threshold)
+    indicates a topic boundary.
+
+    Args:
+        messages: List of message dicts from a session.
+        drift_threshold: Cosine distance threshold for detecting topic boundaries.
+            A value of 0.3 means similarity dropping below 0.7 triggers a split.
+            Higher values = more segments. Lower values = fewer segments.
+        min_segment_size: Minimum messages per segment. Small segments get merged
+            with their predecessor to avoid fragmenting short tangents.
+
+    Returns:
+        List of message lists, each representing a topically coherent segment.
+        If there are fewer than min_segment_size*2 messages or embedding computation
+        fails, returns the full session as a single segment.
+    """
+    import numpy as np
+
+    user_messages = [m for m in messages if m["role"] == "user"]
+    if len(user_messages) < min_segment_size * 2:
+        # Too short to meaningfully segment
+        return [messages]
+
+    # Try to pull pre-computed embeddings from the database
+    precomputed: dict[int, "np.ndarray"] = {}
+    try:
+        conn = get_conn(str(DB_PATH))
+        msg_ids = [m["id"] for m in user_messages if m.get("id")]
+        if msg_ids:
+            placeholders = ",".join("?" * len(msg_ids))
+            rows = conn.execute(
+                f"SELECT message_id, embedding FROM embeddings WHERE message_id IN ({placeholders})",
+                msg_ids,
+            ).fetchall()
+            precomputed = {r["message_id"]: np.frombuffer(r["embedding"], dtype=np.float32) for r in rows}
+            conn.close()
+        else:
+            conn.close()
+    except Exception:
+        pass
+
+    # Compute embeddings for messages not already embedded
+    try:
+        model = _get_dedup_model()
+        embeddings = []
+        for m in user_messages:
+            mid = m.get("id")
+            if mid and mid in precomputed:
+                embeddings.append(precomputed[mid])
+            else:
+                vec = model.encode([m["content"][:2048]], normalize_embeddings=True)[0]
+                embeddings.append(vec.astype(np.float32))
+
+        embeddings_array = np.stack(embeddings)
+    except Exception:
+        # Embedding computation failed — return single segment
+        return [messages]
+
+    # Compute consecutive cosine similarities
+    similarities = []
+    for i in range(len(embeddings_array) - 1):
+        sim = float(embeddings_array[i] @ embeddings_array[i + 1])
+        similarities.append(sim)
+
+    # Find topic boundaries where similarity drops below threshold
+    boundary_indices: list[int] = []
+    similarity_threshold = 1.0 - drift_threshold
+    for i, sim in enumerate(similarities):
+        if sim < similarity_threshold:
+            boundary_indices.append(i + 1)  # Split BEFORE this message
+
+    if not boundary_indices:
+        return [messages]
+
+    # Build segments — we need to map user_message indices back to all-message boundaries
+    # Create a mapping from user message index to position in the full message list
+    user_msg_positions: list[int] = []
+    for i, m in enumerate(messages):
+        if m["role"] == "user":
+            user_msg_positions.append(i)
+
+    # Convert user-message boundary indices to full-message-list positions
+    full_boundaries: list[int] = []
+    for bi in boundary_indices:
+        if bi < len(user_msg_positions):
+            full_boundaries.append(user_msg_positions[bi])
+
+    # Split messages at boundaries
+    segments: list[list[dict]] = []
+    prev = 0
+    for boundary in full_boundaries:
+        segment = messages[prev:boundary]
+        if len(segment) >= min_segment_size:
+            segments.append(segment)
+        elif segments:
+            # Merge small segment with previous
+            segments[-1].extend(segment)
+        else:
+            segments.append(segment)
+        prev = boundary
+
+    # Don't forget the last segment
+    last_segment = messages[prev:]
+    if last_segment:
+        if len(last_segment) < min_segment_size and segments:
+            segments[-1].extend(last_segment)
+        else:
+            segments.append(last_segment)
+
+    return segments if segments else [messages]
+
+
+def distill(use_llm=False, api_base=None, limit=None, model: str = "llama3.3:70b",
+            segment: bool = True):
     conn = get_conn(str(DB_PATH))
     sessions = get_undistilled_sessions(conn)
 
@@ -692,9 +810,20 @@ def distill(use_llm=False, api_base=None, limit=None, model: str = "llama3.3:70b
         facts = extract_facts_heuristic(messages)
 
         if use_llm:
-            llm_facts = extract_facts_llm(messages, api_base, model=model,
-                                          existing_facts=existing_facts)
-            facts.extend(llm_facts)
+            # Segment the session by topic for focused LLM extraction
+            if segment:
+                segments = _segment_session(messages)
+                if len(segments) > 1:
+                    print(f"  Session {session_id[:8]}... split into {len(segments)} segments",
+                          file=sys.stderr)
+            else:
+                segments = [messages]
+            for seg in segments:
+                llm_facts = extract_facts_llm(seg, api_base, model=model,
+                                              existing_facts=existing_facts)
+                facts.extend(llm_facts)
+                # Update existing_facts with newly extracted ones to avoid cross-segment duplication
+                existing_facts.extend(f["fact"] for f in llm_facts)
 
         if facts:
             inserted = store_facts(conn, facts)
@@ -723,6 +852,8 @@ def main():
     run.add_argument("--limit", type=int, help="Max sessions to process")
     run.add_argument("--embed-model", default=None,
                      help="Embedding model for dedup (minilm, mpnet). Default: match embed.py default.")
+    run.add_argument("--no-segment", action="store_true",
+                     help="Disable conversation segmentation (send full sessions to LLM)")
 
     show = sub.add_parser("show", help="Show extracted facts")
     show.add_argument("--category", "-c", choices=list(FACT_CATEGORIES.keys()))
@@ -751,7 +882,8 @@ def main():
     if args.command == "run":
         if hasattr(args, 'embed_model') and args.embed_model:
             _get_dedup_model(args.embed_model)  # Pre-load with specified model
-        distill(use_llm=args.llm, api_base=args.api_base, limit=args.limit, model=args.model)
+        distill(use_llm=args.llm, api_base=args.api_base, limit=args.limit,
+               model=args.model, segment=not getattr(args, 'no_segment', False))
     elif args.command == "show":
         conn = get_conn(str(DB_PATH))
 
