@@ -1,0 +1,59 @@
+{
+  "milestone": "model-registry-and-segmentation",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": { "passed": true, "command": "cd /home/matthewmurray/claude-memory && source .venv/bin/activate && pytest tests/ -v", "exitCode": 0 },
+    "typecheck": { "passed": true, "command": "echo 'No typecheck configured (pure Python project)'", "exitCode": 0 },
+    "lint": { "passed": true, "command": "echo 'No linter configured'", "exitCode": 0 },
+    "schema_validate": { "passed": true, "command": "sqlite3 :memory: < /home/matthewmurray/claude-memory/schema.sql", "exitCode": 0 },
+    "ast_check": { "passed": true, "command": "cd /home/matthewmurray/claude-memory && for f in src/distill.py src/embed.py src/mcp_server.py src/memory_db.py src/web.py; do python3 -c \"import ast; ast.parse(open('$f').read()); print('$f: OK')\"; done", "exitCode": 0 }
+  },
+  "reviewsSummary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Updated architecture.md: corrected 'No model caching' to 'Partial model caching' to document _get_dedup_model() singleton pattern in distill.py alongside get_model()'s no-caching behavior in embed.py",
+      "sourceFeature": "conversation-segmentation"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Update the stale test count: change 'All 166 existing tests must continue to pass' to 'All existing tests must continue to pass' (without a hardcoded number) or update to the current count of 257. The hardcoded number becomes stale with each milestone.",
+      "evidence": "Features conversation-segmentation and semantic-search-enhancement both flagged that AGENTS.md says '166 existing tests' but the actual count is 257 after milestone model-registry-and-segmentation.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add testing convention: CLI flag tests should exercise the actual code path (e.g., calling main() with patched paths) rather than reimplementing the logic inline. Simulation tests that manually replicate SQL DELETE or Path.unlink() verify the language primitives, not the feature integration.",
+      "evidence": "Feature model-registry-and-dimension-safety: tests/test_model_registry.py lines 381-448 test --reembed by manually running DELETE FROM embeddings and Path.unlink() rather than invoking the actual embed.py --reembed code path.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Clarify graceful degradation scope: extend the existing convention ('wrap sentence-transformers imports in try/except, fall back silently') to explicitly cover all semantic search function calls, not just imports. Workers are already doing this correctly, but the guidance should match the practice.",
+      "evidence": "Feature semantic-search-enhancement: worker wrapped _semantic_search() and search_facts_semantic() calls in try/except, correctly extending the convention beyond just imports. The spec omitted try/except for semantic message search in web.py.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add note that verification-only features are exceptions to the TDD (write tests first) convention. They may also need to make small code fixes to satisfy the invariants they verify (e.g., adding missing type hints).",
+      "evidence": "Feature cross-cutting-verification was described as 'no new code, just confirming invariants' but legitimately needed to add type hints to 5 functions to satisfy VAL-CROSS-004.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Verification features may need small fixes — should this be documented as a convention?",
+      "reason": "Already implicitly handled: verification features exist to enforce invariants, and small fixes are a natural part of that. The suggestion about TDD exceptions (above) covers the skill-level guidance; no additional AGENTS.md entry needed for this specific observation."
+    }
+  ],
+  "previousRound": null
+}

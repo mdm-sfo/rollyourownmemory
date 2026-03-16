@@ -1,0 +1,63 @@
+{
+  "featureId": "conversation-segmentation",
+  "reviewedAt": "2026-03-16T20:45:00.000Z",
+  "commitId": "76210fe677a198345d854779fd42ab29d7bea521",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation of _segment_session() and distill() integration is correct and well-structured. The function handles short sessions, topic boundary detection via cosine similarity, small segment merging, and graceful degradation on errors. The distill() integration correctly processes segments individually with cross-segment dedup, and the --no-segment CLI flag is properly wired. 21 comprehensive tests cover all validation assertions (VAL-SEG-001 through VAL-SEG-005) plus edge cases. No blocking issues found.",
+    "issues": [
+      {
+        "file": "src/distill.py",
+        "line": 710,
+        "severity": "non_blocking",
+        "description": "_get_dedup_model() is called unconditionally even when all user message embeddings are already precomputed. If all messages have precomputed embeddings, model loading is wasted work. Could check `len(precomputed) >= len(user_messages)` first and skip model loading."
+      },
+      {
+        "file": "src/distill.py",
+        "line": 689,
+        "severity": "non_blocking",
+        "description": "Inconsistency between short-circuit threshold and merge threshold: the short-circuit uses user message count (`len(user_messages) < min_segment_size * 2`) but the merge logic checks total message count (including assistant messages) via `len(segment) >= min_segment_size`. With interleaved user/assistant messages, a segment with 2 user + 2 assistant = 4 total messages passes the merge check but has only 2 user messages. Not incorrect, but the semantics of min_segment_size differ between the two code paths."
+      },
+      {
+        "file": "src/distill.py",
+        "line": 693,
+        "severity": "non_blocking",
+        "description": "DB connection in the precomputed embeddings section lacks a `finally:` clause for `conn.close()`. If an exception occurs between `get_conn()` and `conn.close()` (e.g., during SQL execution), the connection leaks. The outer `except Exception: pass` catches it, but the connection is not explicitly closed. SQLite will GC it eventually, but a try/finally would be more robust."
+      },
+      {
+        "file": "src/distill.py",
+        "line": 704,
+        "severity": "non_blocking",
+        "description": "Bare `except Exception: pass` in the precomputed embeddings section silently swallows all errors, including potential programming bugs (e.g., KeyError, TypeError). Consider logging or at least narrowing to expected exceptions (sqlite3.OperationalError, sqlite3.DatabaseError)."
+      },
+      {
+        "file": "src/distill.py",
+        "line": 826,
+        "severity": "non_blocking",
+        "description": "The `existing_facts.extend(f['fact'] for f in llm_facts)` line executes even when segment=False (single-segment path), which is a minor behavior change from the original code. The old code did not update existing_facts between sessions within a single distill() run. This is actually an improvement (better cross-session dedup within a run), but it's an undocumented side effect."
+      },
+      {
+        "file": "src/distill.py",
+        "line": 883,
+        "severity": "non_blocking",
+        "description": "`getattr(args, 'no_segment', False)` is unnecessarily defensive since `store_true` always populates the attribute on the argparse namespace. `args.no_segment` would suffice. Harmless but slightly misleading."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The architecture.md library file notes 'No model caching: get_model() in embed.py creates a new SentenceTransformer instance on every call'. However, _get_dedup_model() in distill.py DOES cache via a global `_embedding_model` variable. This caching pattern isn't documented in architecture.md, which could confuse future workers about whether model caching exists or not.",
+      "evidence": "src/distill.py:284-298 — _get_dedup_model uses `global _embedding_model` with lazy init. .factory/library/architecture.md says 'No model caching'."
+    },
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md says 'All 166 existing tests must continue to pass' but the actual test count is now 245 after several features. This stale number could mislead workers about baseline expectations.",
+      "evidence": "AGENTS.md Testing section says '166 existing tests'. Worker handoff says '245 passed'. The baseline was 224 before this feature added 21 more."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature 'conversation-segmentation' passes review. The _segment_session() function correctly implements cosine drift detection on consecutive user message embeddings with pre-computed embedding reuse, graceful degradation, and small-segment merging. The distill() integration properly segments sessions when use_llm=True with cross-segment dedup, and the --no-segment CLI flag works correctly. All 21 tests are well-structured and cover VAL-SEG-001 through VAL-SEG-005. Six non-blocking issues identified: unnecessary model loading when all embeddings are precomputed, inconsistent min_segment_size semantics between short-circuit and merge paths, missing finally clause for DB connection, overly broad exception handling, undocumented behavior change to existing_facts, and unnecessarily defensive getattr usage."
+}

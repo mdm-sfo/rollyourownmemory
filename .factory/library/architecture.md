@@ -22,5 +22,5 @@
 - **In-memory test DB**: Tests use `conftest.py` `db` fixture with schema.sql loaded into `:memory:`
 - **Migration system**: `migrate_schema()` in memory_db.py applies idempotent migrations (1-6 exist; 6 adds fact_embeddings)
 - **FTS5 sync**: Triggers keep FTS tables in sync with source tables automatically
-- **No model caching**: `get_model()` in embed.py creates a new SentenceTransformer instance on every call with no caching. Multiple callers in the same request path (e.g., web.py search with type=all) pay the model-loading cost multiple times.
+- **Partial model caching**: `get_model()` in embed.py creates a new SentenceTransformer instance on every call with no caching. However, `_get_dedup_model()` in distill.py uses a global `_embedding_model` singleton that caches the first loaded model for the duration of the process. Multiple callers in the same web request path (e.g., web.py search with type=all) still pay the model-loading cost multiple times via `get_model()`.
 - **Foreign keys not enforced**: `get_conn()` in memory_db.py does not set `PRAGMA foreign_keys = ON`, so ON DELETE CASCADE constraints (on embeddings and fact_embeddings tables) are not enforced in production. Tests enable it explicitly for validation.

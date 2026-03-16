@@ -1,0 +1,39 @@
+{
+  "featureId": "semantic-search-enhancement",
+  "reviewedAt": "2026-03-16T20:50:00Z",
+  "commitId": "b58bd5a",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation faithfully follows the spec for Tasks 16a and 16b. _gather_ask_context() in web.py now includes semantic fact search (via search_facts_semantic) and semantic message search (via _semantic_search) alongside FTS, with ID-based deduplication using seen_fact_ids and seen_msg_ids sets. memory_deep_recall in mcp_server.py adds Step 1b (semantic fact search, dedup by parsing fact IDs from formatted strings) and Step 2b (semantic message search, dedup by string comparison). All semantic additions are wrapped in try/except for graceful degradation. Worker added type hints to the rewritten _gather_ask_context signature (query: str, project: Optional[str] = None) -> tuple[list[dict], list[dict]], which the raw spec omitted but AGENTS.md requires. Worker also correctly wrapped the semantic message search in web.py in try/except (spec omitted this, but AGENTS.md mandates graceful degradation). 12 new tests added (6 in test_web.py, 6 in test_mcp_server.py) covering happy path, dedup, and graceful failure. All 257 tests pass.",
+    "issues": [
+      {
+        "file": "src/mcp_server.py",
+        "line": 370,
+        "severity": "non_blocking",
+        "description": "Step 1b deduplicates semantic facts against FTS facts by parsing IDs from formatted fact_lines strings (line.split('#')[1].split(']')[0]). This is fragile — if the fact_lines format changes (e.g., removing the [#id] prefix), dedup silently breaks. A separate seen_ids set populated alongside fact_lines (like web.py does) would be more robust. However, this exactly matches the spec's prescribed code, so it's an inherited design choice rather than a worker error."
+      },
+      {
+        "file": "src/mcp_server.py",
+        "line": 345,
+        "severity": "non_blocking",
+        "description": "The FTS fact query now includes f.id and fact_lines format changed from '- [{category}] ...' to '- [#{id}] [{category}] ...'. This format change is necessary for Step 1b dedup to work, but it also changes the output visible to LLM synthesis and end users. The change is correct and intentional per the spec, but worth noting as a behavioral change in the output format."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md states 'All 166 existing tests must continue to pass', but the actual baseline at this point is 245 tests. The test count has grown significantly through prior feature implementations. The number in AGENTS.md is stale.",
+      "evidence": "AGENTS.md says '166 existing tests' but transcript shows 'All 245 tests pass' as baseline before this feature, and '257 passed' after."
+    },
+    {
+      "area": "conventions",
+      "observation": "The spec for Task 16a does not wrap the semantic message search in _gather_ask_context with try/except, but the worker correctly added it to follow the AGENTS.md convention of graceful degradation. AGENTS.md says 'wrap sentence-transformers imports in try/except, fall back silently' but doesn't explicitly extend this to all semantic search calls. The worker's interpretation (wrapping the full _semantic_search call) is correct and defensive.",
+      "evidence": "Spec at line 964-969 shows bare sem_messages = _semantic_search(...) without try/except. Worker's implementation wraps it in try/except Exception: pass. AGENTS.md says 'Graceful degradation: wrap sentence-transformers imports in try/except, fall back silently'."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The semantic-search-enhancement feature is correctly implemented per Tasks 16a and 16b of the spec. web.py's _gather_ask_context now combines FTS and semantic search for both facts and messages with proper ID-based deduplication. mcp_server.py's memory_deep_recall adds Step 1b (semantic facts, dedup by ID parsing) and Step 2b (semantic messages, dedup by string). All semantic code paths degrade gracefully via try/except. 12 comprehensive tests were added (TDD-style). All 257 tests pass. Two non-blocking observations: (1) Step 1b's string-parsing dedup is fragile but matches spec, (2) the fact_lines format now includes [#id] which changes output format. No blocking issues found."
+}

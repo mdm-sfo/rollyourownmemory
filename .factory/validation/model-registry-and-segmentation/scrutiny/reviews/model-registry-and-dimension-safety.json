@@ -1,0 +1,40 @@
+{
+  "featureId": "model-registry-and-dimension-safety",
+  "reviewedAt": "2026-03-16T20:45:00.000Z",
+  "commitId": "f0a1f30d79ee1f2e3f9b6c86e1686aa8176a0b52",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation covering all 9 validation assertions (VAL-REGISTRY-001/002/003, VAL-DIM-001/002/003/004, VAL-DEDUP-001/002). The EMBEDDING_MODELS registry, get_model() short-name resolution, dimension-mismatch safety in both _search_bruteforce() and _search_faiss(), --reembed flag, model-change detection, and _get_dedup_model() with --embed-model CLI flag are all correctly implemented. Code follows existing patterns, uses FAISS_INDEX_PATH/FAISS_IDS_PATH constants (not hardcoded paths) per AGENTS.md nit #1, and adds type hints to all modified/new functions. 28 new tests cover all required behaviors.",
+    "issues": [
+      {
+        "file": "tests/test_model_registry.py",
+        "line": 381,
+        "severity": "non_blocking",
+        "description": "test_reembed_clears_embeddings_table, test_reembed_clears_fact_embeddings_table, and test_reembed_removes_faiss_files replicate the SQL DELETE / Path.unlink() logic inline rather than exercising the actual --reembed code path in main(). For example, test_reembed_removes_faiss_files (line 430) manually creates and unlinks temp files without ever calling the embed.py reembed logic. These tests verify that SQL DELETE and Path.unlink work, not that the --reembed flag correctly wires those operations. If the reembed code in main() were refactored or broken, these tests would still pass. Consider testing by patching DB_PATH and FAISS paths, then calling the actual main(['build', '--reembed']) or the relevant code path."
+      },
+      {
+        "file": "src/distill.py",
+        "line": 289,
+        "severity": "non_blocking",
+        "description": "_get_dedup_model() singleton pattern: once _embedding_model is loaded, subsequent calls with a different model_name silently return the initially-loaded model. The CLI pre-loading in main() mitigates this, but if _get_dedup_model() is called from other code paths (e.g., programmatic use) with a different model_name after initial load, it will silently ignore the new name. A comment or docstring note about this behavior would help future maintainers."
+      },
+      {
+        "file": "src/embed.py",
+        "line": 455,
+        "severity": "non_blocking",
+        "description": "getattr(args, 'reembed', False) is used defensively inside the 'if args.command == \"build\"' branch, where args.reembed is always available since --reembed is defined on the build subparser. This is harmless but slightly misleading — direct args.reembed access would be cleaner and consistent with how other args are accessed in the same block (args.model, args.limit, args.batch_size)."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The --reembed tests (VAL-DIM-003) use 'simulation' pattern — manually replicating the code logic (SQL DELETE, Path.unlink) rather than calling the actual implementation. This testing antipattern is not addressed in AGENTS.md's testing conventions. Consider adding guidance that CLI flag tests should exercise the actual code path (e.g., by calling main() with patched paths) rather than reimplementing the logic inline.",
+      "evidence": "tests/test_model_registry.py lines 381-448: test_reembed_clears_embeddings_table manually runs 'DELETE FROM embeddings' instead of invoking the --reembed code. test_reembed_removes_faiss_files manually creates/unlinks files without calling embed.py code."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. The implementation correctly adds the EMBEDDING_MODELS registry with minilm/mpnet entries, updates get_model() for short-name resolution, adds dimension-mismatch safety to both _search_bruteforce() and _search_faiss(), implements --reembed (clearing embeddings/fact_embeddings/FAISS files using the correct constants), adds model-change detection in embed_messages(), and updates _get_dedup_model() + --embed-model CLI flag. All 9 validation assertions are covered by 28 tests. Three non-blocking issues found: (1) --reembed tests simulate logic rather than exercising the actual code path, (2) singleton pattern in _get_dedup_model could silently ignore model_name on subsequent calls, (3) unnecessary getattr for reembed arg. None are blocking."
+}
