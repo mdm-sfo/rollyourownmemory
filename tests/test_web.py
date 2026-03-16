@@ -1576,3 +1576,127 @@ class TestProjectsEndpoint:
         data = resp.json()
         projects = data["projects"]
         assert len(projects) == len(set(projects))
+
+
+# --- Semantic Fact Search Web Tests ---
+
+class TestSearchSemanticFacts:
+    """VAL-SEMFACT-006: /api/search returns semantic_facts key."""
+
+    def test_search_type_all_includes_semantic_facts_key(self, seeded_client):
+        """type=all response includes 'semantic_facts' array."""
+        with patch("src.web._semantic_search", return_value=[]), \
+             patch("src.web.memory_db.search_facts_semantic", return_value=[]):
+            resp = seeded_client.get("/api/search?q=kalshi&type=all")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert "semantic_facts" in data
+            assert isinstance(data["semantic_facts"], list)
+
+    def test_search_fts_has_semantic_facts_key(self, seeded_client):
+        """Even FTS-only search returns semantic_facts key (empty)."""
+        resp = seeded_client.get("/api/search?q=kalshi&type=fts")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "semantic_facts" in data
+        assert data["semantic_facts"] == []
+
+    def test_search_empty_query_has_semantic_facts_key(self, client):
+        """Empty query returns semantic_facts key."""
+        resp = client.get("/api/search?q=")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "semantic_facts" in data
+        assert data["semantic_facts"] == []
+
+    def test_search_type_all_returns_semantic_fact_results(self, seeded_client):
+        """type=all returns populated semantic_facts when available."""
+        mock_facts = [{
+            "id": 1,
+            "fact": "Kalshi deployment uses docker",
+            "category": "tool",
+            "confidence": 0.9,
+            "project": "kalshi",
+            "timestamp": "2024-01-15",
+            "compressed_details": "specific commands",
+            "score": 0.82,
+        }]
+
+        mock_model = MagicMock()
+        import numpy as np
+        mock_model.encode.return_value = np.zeros((1, 384), dtype=np.float32)
+
+        with patch("src.web._semantic_search", return_value=[]), \
+             patch("src.embed.get_model", return_value=mock_model), \
+             patch("src.memory_db.search_facts_semantic", return_value=mock_facts):
+            resp = seeded_client.get("/api/search?q=kalshi&type=all")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert len(data["semantic_facts"]) == 1
+            sf = data["semantic_facts"][0]
+            assert sf["id"] == 1
+            assert sf["score"] == 0.82
+            assert sf["category"] == "tool"
+
+    def test_semantic_facts_structure(self, seeded_client):
+        """semantic_facts items have expected fields: id, fact, category, confidence, score."""
+        mock_facts = [{
+            "id": 2,
+            "fact": "test fact",
+            "category": "preference",
+            "confidence": 0.8,
+            "project": "test",
+            "timestamp": "2024-01-01",
+            "compressed_details": None,
+            "score": 0.75,
+        }]
+
+        mock_model = MagicMock()
+        import numpy as np
+        mock_model.encode.return_value = np.zeros((1, 384), dtype=np.float32)
+
+        with patch("src.web._semantic_search", return_value=[]), \
+             patch("src.embed.get_model", return_value=mock_model), \
+             patch("src.memory_db.search_facts_semantic", return_value=mock_facts):
+            resp = seeded_client.get("/api/search?q=test&type=all")
+            data = resp.json()
+            sf = data["semantic_facts"][0]
+            assert "id" in sf
+            assert "fact" in sf
+            assert "category" in sf
+            assert "confidence" in sf
+            assert "score" in sf
+            assert "project" in sf
+            assert "timestamp" in sf
+
+
+class TestSemanticFactsFrontend:
+    """VAL-SEMFACT-007: Frontend renders semantic fact cards."""
+
+    def test_app_js_has_semantic_fact_matches_section(self, client):
+        """app.js has 'Semantic Fact Matches' section heading."""
+        resp = client.get("/static/app.js")
+        js = resp.text
+        assert "Semantic Fact Matches" in js
+
+    def test_app_js_renders_sim_score_badge(self, client):
+        """app.js renders similarity score badges for semantic facts."""
+        resp = client.get("/static/app.js")
+        js = resp.text
+        # Check that the semantic facts section uses score-related rendering
+        assert "sim " in js  # "sim " prefix in badge text
+        assert "semantic_facts" in js
+
+    def test_app_js_semantic_facts_have_click_to_inspect(self, client):
+        """app.js semantic fact cards have data-fact-id for click-to-inspect."""
+        resp = client.get("/static/app.js")
+        js = resp.text
+        # The semantic facts section should use result-fact class and data-fact-id
+        # (which triggers the existing click-to-inspect behavior)
+        assert "data-fact-id" in js
+
+    def test_app_js_includes_semantic_facts_in_total_count(self, client):
+        """app.js includes semantic_facts in total result count."""
+        resp = client.get("/static/app.js")
+        js = resp.text
+        assert "semantic_facts" in js

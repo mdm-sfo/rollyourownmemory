@@ -1,9 +1,10 @@
-"""Tests for src/mcp_server.py — memory_deep_recall tool."""
+"""Tests for src/mcp_server.py — memory_deep_recall tool, memory_search_facts_semantic tool."""
 
 import sqlite3
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
+import numpy as np
 import pytest
 
 SCHEMA_PATH = Path(__file__).parent.parent / "schema.sql"
@@ -123,3 +124,75 @@ class TestMemoryDeepRecall:
         # Specifically verify it's in the httpx.post call within memory_deep_recall
         func_source = source[source.index("def memory_deep_recall"):source.index("\n@mcp.tool()\ndef memory_find_entity")]
         assert '"model": "llama3.3:70b"' in func_source
+
+
+class TestMemorySearchFactsSemantic:
+    """VAL-SEMFACT-005: memory_search_facts_semantic MCP tool."""
+
+    def test_tool_exists_with_correct_signature(self) -> None:
+        """memory_search_facts_semantic is importable and has the right parameters."""
+        from src.mcp_server import memory_search_facts_semantic
+        import inspect
+
+        sig = inspect.signature(memory_search_facts_semantic)
+        params = list(sig.parameters.keys())
+        assert "query" in params
+        assert "category" in params
+        assert "limit" in params
+
+        # Check defaults
+        assert sig.parameters["limit"].default == 10
+
+    def test_returns_formatted_results(self, mcp_db: Path) -> None:
+        """Returns formatted string with IDs, categories, confidence, and similarity scores."""
+        from src.mcp_server import memory_search_facts_semantic
+
+        def patched_get_conn():
+            c = sqlite3.connect(str(mcp_db))
+            c.row_factory = sqlite3.Row
+            return c
+
+        # Mock the model to return a known vector
+        mock_model = MagicMock()
+        vec = np.random.randn(384).astype(np.float32)
+        vec = vec / np.linalg.norm(vec)
+        mock_model.encode.return_value = np.array([vec])
+
+        with patch("src.mcp_server.get_conn", side_effect=patched_get_conn), \
+             patch("src.embed.get_model", return_value=mock_model), \
+             patch("src.memory_db.search_facts_semantic", return_value=[{
+                 "id": 1,
+                 "fact": "User configures CORS in Express",
+                 "category": "tool",
+                 "confidence": 0.9,
+                 "project": "/home/user/proj",
+                 "timestamp": "2024-01-01",
+                 "compressed_details": "exact config values",
+                 "score": 0.85,
+             }]):
+            result = memory_search_facts_semantic("CORS middleware")
+
+        assert "Semantic fact matches" in result
+        assert "#1" in result or "[#1]" in result
+        assert "tool" in result
+        assert "sim=0.850" in result
+
+    def test_no_results_message(self, mcp_db: Path) -> None:
+        """Returns 'No semantic fact matches' when nothing is found."""
+        from src.mcp_server import memory_search_facts_semantic
+
+        def patched_get_conn():
+            c = sqlite3.connect(str(mcp_db))
+            c.row_factory = sqlite3.Row
+            return c
+
+        mock_model = MagicMock()
+        query_vec = np.random.randn(384).astype(np.float32)
+        mock_model.encode.return_value = np.array([query_vec])
+
+        with patch("src.mcp_server.get_conn", side_effect=patched_get_conn), \
+             patch("src.embed.get_model", return_value=mock_model), \
+             patch("src.memory_db.search_facts_semantic", return_value=[]):
+            result = memory_search_facts_semantic("nonexistent query")
+
+        assert "No semantic fact matches" in result

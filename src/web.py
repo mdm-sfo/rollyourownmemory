@@ -154,6 +154,7 @@ async def search(
             "facts": [],
             "sessions": [],
             "semantic": [],
+            "semantic_facts": [],
             "timing_ms": 0,
             "query": "",
         }
@@ -217,6 +218,28 @@ async def search(
     if include_semantic:
         semantic = _semantic_search(query, conn, project=project, limit=min(limit, 5))
 
+    # Semantic fact search — only when explicitly requested
+    semantic_facts = []
+    if include_semantic:
+        try:
+            from src.embed import get_model
+            model = get_model()
+            query_vec = model.encode([query[:2048]], normalize_embeddings=True)[0]
+            raw_facts = memory_db.search_facts_semantic(conn, query_vec, project=project, limit=min(limit, 10))
+            for f in raw_facts:
+                semantic_facts.append({
+                    "id": f.get("id"),
+                    "fact": f.get("fact"),
+                    "category": f.get("category"),
+                    "confidence": f.get("confidence"),
+                    "project": f.get("project"),
+                    "timestamp": f.get("timestamp"),
+                    "compressed_details": f.get("compressed_details"),
+                    "score": round(f.get("score", 0), 4),
+                })
+        except Exception:
+            pass
+
     conn.close()
     elapsed = round((time.time() - start) * 1000, 1)
 
@@ -225,6 +248,7 @@ async def search(
         "facts": facts,
         "sessions": sessions,
         "semantic": semantic,
+        "semantic_facts": semantic_facts,
         "timing_ms": elapsed,
         "query": query,
     }

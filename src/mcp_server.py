@@ -628,6 +628,55 @@ def memory_feedback(fact_id: int, feedback: str, correction: Optional[str] = Non
 
 
 @mcp.tool()
+def memory_search_facts_semantic(query: str, category: Optional[str] = None,
+                                  limit: int = 10) -> str:
+    """Search facts by MEANING using vector embeddings.
+    Use when memory_search_facts (keyword search) doesn't find what you need —
+    this finds semantically similar facts even when words don't match.
+
+    Args:
+        query: Natural language description of what you're looking for
+        category: Filter by category: preference, decision, learning, context, tool, pattern, error, solution
+        limit: Max results (default 10)
+    """
+    try:
+        from embed import get_model
+        from memory_db import search_facts_semantic
+    except ImportError:
+        try:
+            from src.embed import get_model
+            from src.memory_db import search_facts_semantic
+        except ImportError:
+            return "Semantic fact search unavailable: sentence-transformers not installed."
+
+    model = get_model()
+    query_vec = model.encode([query[:2048]], normalize_embeddings=True)[0]
+
+    conn = get_conn()
+    results = search_facts_semantic(conn, query_vec, category=category, limit=limit)
+    conn.close()
+
+    if not results:
+        return f"No semantic fact matches for \"{query}\""
+
+    lines = []
+    for r in results:
+        compressed = ""
+        try:
+            cd = r.get("compressed_details")
+            if cd and cd.strip() and cd.strip() != "none":
+                compressed = f" [details: {cd}]"
+        except (IndexError, KeyError):
+            pass
+        lines.append(
+            f"[#{r['id']}] [{r['category']}] (conf={r['confidence']:.1f}, sim={r['score']:.3f}) "
+            f"{r['fact']}{compressed}"
+        )
+
+    return f"Semantic fact matches for \"{query}\":\n\n" + "\n".join(lines)
+
+
+@mcp.tool()
 def memory_find_entity(name: str) -> str:
     """Find what sessions and contexts mention a specific tool, library, service, or concept.
 

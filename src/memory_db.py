@@ -262,6 +262,74 @@ def list_recent_sessions(conn: sqlite3.Connection,
     return [dict(r) for r in rows]
 
 
+def search_facts_semantic(conn: sqlite3.Connection, query_vec,
+                          category: Optional[str] = None,
+                          project: Optional[str] = None,
+                          limit: int = 10) -> list[dict]:
+    """Semantic search over fact embeddings using cosine similarity.
+
+    Args:
+        conn: SQLite connection.
+        query_vec: numpy array — the query embedding (already normalized).
+        category: Optional category filter.
+        project: Optional project filter.
+        limit: Max results to return.
+
+    Returns:
+        List of fact dicts with an added 'score' key, sorted by descending similarity.
+    """
+    import numpy as np
+
+    sql = """
+        SELECT f.id, f.fact, f.category, f.confidence, f.project,
+               f.timestamp, f.compressed_details, fe.embedding
+        FROM fact_embeddings fe
+        JOIN facts f ON f.id = fe.fact_id
+        WHERE f.confidence > 0
+    """
+    params: list = []
+
+    if category:
+        sql += " AND f.category = ?"
+        params.append(category)
+    if project:
+        sql += " AND f.project LIKE ?"
+        params.append(f"%{project}%")
+
+    rows = conn.execute(sql, params).fetchall()
+    if not rows:
+        return []
+
+    # Filter to only embeddings that match the query vector's dimension
+    facts = []
+    embeddings = []
+    query_dim = query_vec.shape[0]
+    for r in rows:
+        vec = np.frombuffer(r["embedding"], dtype=np.float32)
+        if vec.shape[0] == query_dim:
+            facts.append(dict(r))
+            embeddings.append(vec)
+
+    if not embeddings:
+        return []
+
+    embeddings_matrix = np.stack(embeddings)
+    query_vec = query_vec.astype(np.float32)
+    similarities = embeddings_matrix @ query_vec
+
+    top_indices = np.argsort(similarities)[::-1][:limit]
+
+    results = []
+    for idx in top_indices:
+        fact = facts[idx]
+        fact.pop("embedding", None)
+        fact["score"] = float(similarities[idx])
+        if fact["score"] > 0.3:  # Only return minimally relevant results
+            results.append(fact)
+
+    return results
+
+
 def store_fact(conn: sqlite3.Connection, fact: str, category: str,
                confidence: float, project: Optional[str] = None,
                session_id: Optional[str] = None,

@@ -400,7 +400,8 @@
             (data.facts || []).length +
             (data.messages || []).length +
             (data.sessions || []).length +
-            (data.semantic || []).length;
+            (data.semantic || []).length +
+            (data.semantic_facts || []).length;
 
         if (totalResults === 0) {
             resultsContainer.innerHTML =
@@ -556,6 +557,50 @@
                         escapeHtml(msg.content || "") +
                         "</div>"
                 );
+                html.push("</div>");
+            });
+            html.push("</div>");
+        }
+
+        // Semantic Facts section
+        if (data.semantic_facts && data.semantic_facts.length > 0) {
+            html.push('<div class="result-group">');
+            html.push('<h3 class="result-group-title">Semantic Fact Matches</h3>');
+            data.semantic_facts.forEach(function (fact) {
+                html.push(
+                    '<div class="result-card result-fact" data-fact-id="' +
+                        escapeHtml(String(fact.id)) +
+                        '">'
+                );
+                html.push(
+                    '<span class="badge badge-id">#' +
+                        escapeHtml(String(fact.id)) +
+                        "</span> "
+                );
+                html.push(
+                    '<span class="badge badge-category">' +
+                        escapeHtml(fact.category || "") +
+                        "</span> "
+                );
+                html.push(
+                    '<span class="badge badge-confidence">sim ' +
+                        escapeHtml(
+                            fact.score != null
+                                ? fact.score.toFixed(3)
+                                : "?"
+                        ) +
+                        "</span> "
+                );
+                html.push(
+                    "<span>" + escapeHtml(fact.fact || "") + "</span>"
+                );
+                if (fact.compressed_details) {
+                    html.push(
+                        '<div class="compressed-note">[compressed: ' +
+                            escapeHtml(fact.compressed_details) +
+                            "]</div>"
+                    );
+                }
                 html.push("</div>");
             });
             html.push("</div>");
