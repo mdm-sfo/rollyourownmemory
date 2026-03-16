@@ -1,0 +1,45 @@
+{
+  "featureId": "fact-embeddings-schema-and-persistence",
+  "reviewedAt": "2026-03-16T20:15:00Z",
+  "commitId": "3b47ebfa5386676141894b9f24f96e7b6fe2215d",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation covering all 7 validation assertions. Schema, migration, embedding persistence in store_facts(), optimized _load_existing_fact_embeddings() with DB-first/fallback-encode pattern, backfill function, and CLI subcommand are all correctly implemented. 11 well-structured tests cover happy paths, edge cases (empty facts, all-persisted, cascade delete), and CLI verification. Code follows existing patterns and conventions.",
+    "issues": [
+      {
+        "file": "src/distill.py",
+        "line": 413,
+        "severity": "non_blocking",
+        "description": "DEFAULT_MODEL import (`from src.embed import DEFAULT_MODEL as _embed_default`) is inside the for-loop in store_facts(). While Python caches module imports so there's no real performance penalty, it would be cleaner to import once before the loop (similar to how _get_dedup_model() is called once before the loop). Same pattern repeated at line 444 in backfill_fact_embeddings()."
+      },
+      {
+        "file": "src/distill.py",
+        "line": 353,
+        "severity": "non_blocking",
+        "description": "np.stack(embeddings) in _load_existing_fact_embeddings() would crash with ValueError if persisted embeddings have mixed dimensions (e.g., some stored with 384-dim model and others with 768-dim from a model change). This edge case is unlikely in normal operation and search_facts_semantic() already handles dimension filtering, but a defensive check could prevent confusing errors during dedup after a model migration."
+      },
+      {
+        "file": "tests/test_fact_embeddings.py",
+        "line": 136,
+        "severity": "non_blocking",
+        "description": "Class name 'TestStoreFactsPeristsEmbeddings' has a typo — should be 'TestStoreFactsPersistsEmbeddings' (missing second 's' in 'Persists')."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "PRAGMA foreign_keys = ON is not set in get_conn() in memory_db.py, which means ON DELETE CASCADE constraints on fact_embeddings (and the existing embeddings table) are not enforced in production. The test correctly enables it via `PRAGMA foreign_keys = ON` to validate CASCADE behavior, but production deletes of facts rows will leave orphaned fact_embeddings rows. This is a pre-existing pattern (the embeddings table has the same issue), not something the worker introduced.",
+      "evidence": "src/memory_db.py get_conn() (lines 131-148) sets WAL, synchronous, busy_timeout but not foreign_keys. Tests in test_fact_embeddings.py line 25 explicitly set PRAGMA foreign_keys = ON."
+    },
+    {
+      "area": "skills",
+      "observation": "The skill's example handoff suggests adding tests to tests/test_memory_db.py, but the worker created a separate tests/test_fact_embeddings.py file. This is arguably better for organization and the skill feedback shows followedProcedure: true, so the deviation is reasonable. The skill example could be updated to mention that creating new test files for distinct features is acceptable.",
+      "evidence": "SKILL.md example handoff says 'Added 8 new tests in test_memory_db.py', but worker created tests/test_fact_embeddings.py with 11 tests. skillFeedback.followedProcedure is true with no deviations listed."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. All 7 validation assertions (VAL-SCHEMA-001 through VAL-PERSIST-004) are satisfied. The implementation adds fact_embeddings table to schema.sql with correct FK/CASCADE, Migration 6 to memory_db.py, embedding persistence in store_facts(), an optimized _load_existing_fact_embeddings() that prefers DB-stored embeddings with fallback encoding, a backfill_fact_embeddings() function, and a backfill_embeddings CLI subcommand. 11 tests provide thorough coverage including migration validation, CASCADE delete, embedding persistence, loading with/without persisted data, backfill for missing embeddings, and CLI --help. Three non-blocking issues noted: repeated import inside loop, potential mixed-dimension crash in np.stack, and a typo in test class name."
+}

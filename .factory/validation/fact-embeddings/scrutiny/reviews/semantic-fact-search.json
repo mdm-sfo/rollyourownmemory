@@ -1,0 +1,39 @@
+{
+  "featureId": "semantic-fact-search",
+  "reviewedAt": "2026-03-16T20:15:00Z",
+  "commitId": "3feea31",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid end-to-end implementation of semantic fact search across all four layers (DB, MCP, API, frontend). The search_facts_semantic() function correctly implements brute-force dot-product with dimension filtering, 0.3 min score threshold, and category/project SQL filters. The MCP tool follows existing patterns with proper try/except import handling. The web.py integration correctly adds semantic_facts to the /api/search response with graceful degradation. The app.js frontend renders Semantic Fact Matches with sim score badges, escapeHtml on all user-facing strings, and click-to-inspect via the shared result-fact class. Tests are comprehensive (19 new tests) covering all validation assertions. All 196 tests pass.",
+    "issues": [
+      {
+        "file": "src/web.py",
+        "line": 225,
+        "severity": "non_blocking",
+        "description": "Double model loading per search request: get_model() is called once inside _semantic_search() (via embed.search_similar) at line 219, and again at line 225 for semantic fact search. Since get_model() creates a new SentenceTransformer instance each time (no caching in embed.py), this loads the model into memory twice per type=all request. Consider passing the model instance to avoid redundant loading, or caching in get_model(). Not a correctness bug — just a ~2x overhead on model load time for semantic searches."
+      },
+      {
+        "file": "src/mcp_server.py",
+        "line": 631,
+        "severity": "non_blocking",
+        "description": "The MCP tool memory_search_facts_semantic does not expose a 'project' parameter, even though the underlying search_facts_semantic() supports it. This is consistent with the existing memory_search_facts MCP tool which also lacks a project parameter, so it follows established patterns. Not blocking, but worth noting for future enhancement."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "get_model() in embed.py creates a new SentenceTransformer instance on every call with no caching. Multiple callers in the same request path (e.g., web.py search with type=all) pay the model-loading cost multiple times. AGENTS.md doesn't mention this pattern or recommend model reuse/caching. This could be documented as a known performance characteristic, or a caching layer could be introduced.",
+      "evidence": "src/embed.py:35-37 — get_model() returns SentenceTransformer(model_name) with no caching. src/web.py:219+225 — called twice in one request via _semantic_search() and direct call for semantic facts."
+    },
+    {
+      "area": "conventions",
+      "observation": "Worker correctly followed the AGENTS.md convention of wrapping sentence-transformers imports in try/except with graceful degradation. Both mcp_server.py and web.py handle ImportError gracefully. This is well-documented and consistently applied.",
+      "evidence": "src/mcp_server.py:644-650, src/web.py:224 — both use try/except around embed imports."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. The semantic-fact-search implementation correctly delivers all 7 validation assertions (VAL-SEMFACT-001 through VAL-SEMFACT-007). search_facts_semantic() in memory_db.py implements brute-force dot-product search with proper dimension filtering, 0.3 threshold, and category/project filters. The MCP tool, web API, and frontend are all properly integrated. 19 new tests provide solid coverage. Two non-blocking issues noted: (1) double model loading in web.py when type=all, and (2) MCP tool doesn't expose project filter (consistent with existing tools). Worker followed the skill procedure correctly (TDD approach, spec adherence, full test suite verification)."
+}

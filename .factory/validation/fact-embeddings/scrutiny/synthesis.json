@@ -1,0 +1,41 @@
+{
+  "milestone": "fact-embeddings",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": { "passed": true, "command": "cd /home/matthewmurray/claude-memory && source .venv/bin/activate && pytest tests/ -v", "exitCode": 0, "detail": "196 passed in 40.97s" },
+    "typecheck": { "passed": true, "command": "echo 'No typecheck configured (pure Python project)'", "exitCode": 0 },
+    "lint": { "passed": true, "command": "echo 'No linter configured'", "exitCode": 0 },
+    "schema_validate": { "passed": true, "command": "sqlite3 :memory: < /home/matthewmurray/claude-memory/schema.sql", "exitCode": 0 },
+    "ast_check": { "passed": true, "command": "python3 -c 'import ast; ast.parse(...)' for all 5 source files", "exitCode": 0, "detail": "distill.py, embed.py, mcp_server.py, memory_db.py, web.py all OK" }
+  },
+  "reviewsSummary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Added note about get_model() lacking caching and foreign_keys pragma not being set in get_conn() to architecture.md",
+      "sourceFeature": "semantic-fact-search, fact-embeddings-schema-and-persistence"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills",
+      "suggestion": "Update memory-worker skill example to mention that creating new test files for distinct features (e.g., tests/test_fact_embeddings.py) is acceptable, rather than always adding tests to existing files like test_memory_db.py.",
+      "evidence": "Feature fact-embeddings-schema-and-persistence worker created tests/test_fact_embeddings.py with 11 tests instead of adding to test_memory_db.py. This was a reasonable organizational choice.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Worker correctly followed the AGENTS.md convention of wrapping sentence-transformers imports in try/except with graceful degradation.",
+      "reason": "Positive observation already documented in AGENTS.md under 'Graceful degradation' and in library/architecture.md under 'Key Patterns'. No action needed."
+    }
+  ],
+  "previousRound": null
+}
