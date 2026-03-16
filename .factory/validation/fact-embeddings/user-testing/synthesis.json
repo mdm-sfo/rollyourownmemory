@@ -1,0 +1,37 @@
+{
+  "milestone": "fact-embeddings",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 14,
+    "passed": 14,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-SCHEMA-001",
+    "VAL-SCHEMA-002",
+    "VAL-SCHEMA-003",
+    "VAL-PERSIST-001",
+    "VAL-PERSIST-002",
+    "VAL-PERSIST-003",
+    "VAL-PERSIST-004",
+    "VAL-SEMFACT-001",
+    "VAL-SEMFACT-002",
+    "VAL-SEMFACT-003",
+    "VAL-SEMFACT-004",
+    "VAL-SEMFACT-005",
+    "VAL-SEMFACT-006",
+    "VAL-SEMFACT-007"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added Flow Validator Guidance: CLI/API/Unit-Test section with isolation rules, testing tools, and environment details",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null
+}

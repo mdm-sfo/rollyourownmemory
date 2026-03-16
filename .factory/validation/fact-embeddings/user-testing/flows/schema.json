@@ -1,0 +1,82 @@
+{
+  "groupId": "schema",
+  "testedAt": "2026-03-16T00:00:00Z",
+  "isolation": {
+    "projectRoot": "/home/matthewmurray/claude-memory",
+    "pythonVenv": "/home/matthewmurray/claude-memory/.venv",
+    "database": "in-memory SQLite (no shared state)",
+    "webService": "http://localhost:8585 (read-only, not used)"
+  },
+  "toolsUsed": ["pytest", "sqlite3", "grep/read"],
+  "assertions": [
+    {
+      "id": "VAL-SCHEMA-001",
+      "title": "fact_embeddings table created by migration",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run pytest tests/test_fact_embeddings.py::TestMigration6CreatesFactEmbeddings -v",
+          "expected": "3 tests pass: table exists, columns correct, migrate_schema() creates table",
+          "observed": "3 passed in 0.03s"
+        },
+        {
+          "action": "Code inspection: memory_db.py line 113-120 (Migration 6)",
+          "expected": "CREATE TABLE IF NOT EXISTS fact_embeddings with columns fact_id, embedding, model, created_at",
+          "observed": "Migration 6 creates fact_embeddings with fact_id (PK, FK to facts.id ON DELETE CASCADE), embedding (BLOB), model (TEXT), created_at (TEXT DEFAULT datetime('now'))"
+        }
+      ],
+      "evidence": {
+        "testOutput": "fact-embeddings/schema/VAL-SCHEMA-001-pytest-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SCHEMA-002",
+      "title": "schema.sql is valid SQL",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: sqlite3 :memory: < /home/matthewmurray/claude-memory/schema.sql",
+          "expected": "Exit code 0, no errors",
+          "observed": "Exit code 0, parsed without error"
+        },
+        {
+          "action": "Grep schema.sql for fact_embeddings CREATE TABLE",
+          "expected": "CREATE TABLE IF NOT EXISTS fact_embeddings statement present",
+          "observed": "Found at line 61 with correct columns: fact_id (PK, FK), embedding (BLOB NOT NULL), model (TEXT NOT NULL), created_at (TEXT DEFAULT)"
+        }
+      ],
+      "evidence": {
+        "shellOutput": "fact-embeddings/schema/VAL-SCHEMA-002-sqlite3-parse.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SCHEMA-003",
+      "title": "fact_embeddings has ON DELETE CASCADE",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run pytest tests/test_fact_embeddings.py::TestFactEmbeddingsCascadeDelete -v",
+          "expected": "1 test passes: cascade delete confirmed",
+          "observed": "1 passed in 0.04s"
+        },
+        {
+          "action": "Code inspection: schema.sql line 62 and memory_db.py line 116",
+          "expected": "REFERENCES facts(id) ON DELETE CASCADE in both schema.sql and migration",
+          "observed": "Both schema.sql and migration 6 in memory_db.py include 'REFERENCES facts(id) ON DELETE CASCADE'"
+        }
+      ],
+      "evidence": {
+        "testOutput": "fact-embeddings/schema/VAL-SCHEMA-003-pytest-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 3 assertions: 3 passed, 0 failed. VAL-SCHEMA-001 confirmed via 3 unit tests (table exists, correct columns, migrate_schema creates table). VAL-SCHEMA-002 confirmed via sqlite3 :memory: parse (exit code 0) and grep. VAL-SCHEMA-003 confirmed via unit test (insert fact+embedding, delete fact, embedding gone) and code inspection of ON DELETE CASCADE."
+}

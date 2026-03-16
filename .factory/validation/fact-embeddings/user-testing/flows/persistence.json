@@ -1,0 +1,85 @@
+{
+  "groupId": "persistence",
+  "testedAt": "2026-03-16T00:00:00Z",
+  "isolation": {
+    "projectRoot": "/home/matthewmurray/claude-memory",
+    "pythonVenv": "/home/matthewmurray/claude-memory/.venv",
+    "webService": "http://localhost:8585",
+    "database": "in-memory SQLite (no shared state)"
+  },
+  "toolsUsed": ["pytest", "CLI commands", "code inspection via Grep/Read"],
+  "assertions": [
+    {
+      "id": "VAL-PERSIST-001",
+      "title": "store_facts persists embeddings alongside new facts",
+      "status": "pass",
+      "steps": [
+        { "action": "Ran pytest tests/test_fact_embeddings.py::TestStoreFactsPeristsEmbeddings::test_embedding_persisted_after_insert -v", "expected": "Test passes: after store_facts inserts a fact, fact_embeddings has a row with correct model name and 384-dim embedding", "observed": "PASSED — fact_embeddings row found with model='all-MiniLM-L6-v2' and 384-dim embedding blob" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "testOutput": "fact-embeddings/persistence/pytest-output.txt",
+        "relevantTest": "tests/test_fact_embeddings.py::TestStoreFactsPeristsEmbeddings::test_embedding_persisted_after_insert"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERSIST-002",
+      "title": "_load_existing_fact_embeddings uses persisted embeddings",
+      "status": "pass",
+      "steps": [
+        { "action": "Ran pytest tests/test_fact_embeddings.py::TestLoadExistingFactEmbeddings -v (3 tests)", "expected": "Facts with persisted embeddings loaded from DB; facts without fall back to model encoding; empty facts return empty arrays; when all persisted, model.encode not called", "observed": "All 3 tests PASSED: test_loads_persisted_embeddings, test_empty_facts, test_all_persisted_no_encoding" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "testOutput": "fact-embeddings/persistence/pytest-output.txt",
+        "relevantTests": [
+          "tests/test_fact_embeddings.py::TestLoadExistingFactEmbeddings::test_loads_persisted_embeddings",
+          "tests/test_fact_embeddings.py::TestLoadExistingFactEmbeddings::test_empty_facts",
+          "tests/test_fact_embeddings.py::TestLoadExistingFactEmbeddings::test_all_persisted_no_encoding"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERSIST-003",
+      "title": "backfill_embeddings CLI command is registered",
+      "status": "pass",
+      "steps": [
+        { "action": "Ran: python3 src/distill.py backfill_embeddings --help", "expected": "Exit code 0 with help text", "observed": "Exit code 0, output shows 'usage: distill.py backfill_embeddings [-h]' with options help" },
+        { "action": "Ran pytest tests/test_fact_embeddings.py::TestBackfillCLI::test_help_exits_0 -v", "expected": "Unit test also passes", "observed": "PASSED" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "cliOutput": "fact-embeddings/persistence/cli-backfill-help.txt",
+        "testOutput": "fact-embeddings/persistence/pytest-output.txt",
+        "relevantTest": "tests/test_fact_embeddings.py::TestBackfillCLI::test_help_exits_0"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERSIST-004",
+      "title": "backfill generates embeddings for facts missing them",
+      "status": "pass",
+      "steps": [
+        { "action": "Ran pytest tests/test_fact_embeddings.py::TestBackfillFactEmbeddings -v (2 tests)", "expected": "backfill_fact_embeddings finds facts without embeddings, encodes and inserts them; skips facts that already have embeddings; returns 0 when all present", "observed": "Both tests PASSED: test_backfill_missing (count=1 for the one missing embedding, both facts have embeddings after), test_backfill_all_present (count=0 when all already have embeddings)" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "testOutput": "fact-embeddings/persistence/pytest-output.txt",
+        "relevantTests": [
+          "tests/test_fact_embeddings.py::TestBackfillFactEmbeddings::test_backfill_missing",
+          "tests/test_fact_embeddings.py::TestBackfillFactEmbeddings::test_backfill_all_present"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 4 assertions: 4 passed, 0 failed. All persistence-related tests in test_fact_embeddings.py pass (11/11 total). CLI backfill_embeddings --help exits with code 0. store_facts correctly persists embeddings, _load_existing_fact_embeddings uses persisted data with fallback encoding, and backfill correctly fills only missing embeddings."
+}

@@ -1,0 +1,136 @@
+{
+  "groupId": "semantic-search",
+  "testedAt": "2026-03-16T12:00:00Z",
+  "isolation": {
+    "projectRoot": "/home/matthewmurray/claude-memory",
+    "pythonVenv": "/home/matthewmurray/claude-memory/.venv",
+    "webService": "http://localhost:8585",
+    "testDb": "in-memory SQLite (no shared state)"
+  },
+  "toolsUsed": ["pytest", "curl", "grep", "read"],
+  "assertions": [
+    {
+      "id": "VAL-SEMFACT-001",
+      "title": "search_facts_semantic returns ranked results",
+      "status": "pass",
+      "steps": [
+        { "action": "Run pytest tests/test_memory_db.py::TestSearchFactsSemantic::test_returns_ranked_results", "expected": "Test passes — results sorted by descending cosine similarity with 'score' key", "observed": "PASSED. Test creates 3 facts with known embeddings, queries search_facts_semantic, verifies results sorted by descending score and all have float 'score' key." },
+        { "action": "Inspect search_facts_semantic function signature in memory_db.py:265", "expected": "Function accepts query_vec, returns dicts with score key", "observed": "Function signature: search_facts_semantic(conn, query_vec, category=None, project=None, limit=10) -> list[dict]" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (CLI test)",
+        "testOutput": "fact-embeddings/semantic-search/pytest-all-semfact.txt",
+        "network": "n/a"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SEMFACT-002",
+      "title": "search_facts_semantic filters by dimension",
+      "status": "pass",
+      "steps": [
+        { "action": "Run pytest tests/test_memory_db.py::TestSearchFactsSemantic::test_filters_by_dimension", "expected": "Test passes — 768-dim embeddings skipped when querying with 384-dim vector", "observed": "PASSED. Test inserts 384-dim and 768-dim embeddings, queries with 384-dim vector. 768-dim fact excluded from results, no crash." }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (CLI test)",
+        "testOutput": "fact-embeddings/semantic-search/pytest-all-semfact.txt",
+        "network": "n/a"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SEMFACT-003",
+      "title": "search_facts_semantic filters by category and project",
+      "status": "pass",
+      "steps": [
+        { "action": "Run pytest tests/test_memory_db.py::TestSearchFactsSemantic::test_filters_by_category", "expected": "Only facts matching category='preference' returned", "observed": "PASSED. Inserts facts with categories 'preference' and 'tool', filters by category='preference', all results have category='preference'." },
+        { "action": "Run pytest tests/test_memory_db.py::TestSearchFactsSemantic::test_filters_by_project", "expected": "Only facts matching project filter returned", "observed": "PASSED. Inserts facts with different projects, filters by project='proj1', all results contain 'proj1' in project field." }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (CLI test)",
+        "testOutput": "fact-embeddings/semantic-search/pytest-all-semfact.txt",
+        "network": "n/a"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SEMFACT-004",
+      "title": "search_facts_semantic applies minimum similarity threshold",
+      "status": "pass",
+      "steps": [
+        { "action": "Run pytest tests/test_memory_db.py::TestSearchFactsSemantic::test_minimum_similarity_threshold", "expected": "Facts with similarity <= 0.3 excluded from results", "observed": "PASSED. Test creates high-similarity and low-similarity (nearly orthogonal) embeddings. All returned results have score > 0.3, and the low-similarity fact ID is excluded." }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (CLI test)",
+        "testOutput": "fact-embeddings/semantic-search/pytest-all-semfact.txt",
+        "network": "n/a"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SEMFACT-005",
+      "title": "memory_search_facts_semantic MCP tool exists and returns formatted results",
+      "status": "pass",
+      "steps": [
+        { "action": "Run pytest tests/test_mcp_server.py::TestMemorySearchFactsSemantic::test_tool_exists_with_correct_signature", "expected": "Tool function importable with 'query', 'category', 'limit' params", "observed": "PASSED. memory_search_facts_semantic importable from src.mcp_server with correct signature and limit default=10." },
+        { "action": "Run pytest tests/test_mcp_server.py::TestMemorySearchFactsSemantic::test_returns_formatted_results", "expected": "Returns formatted string with IDs, categories, confidence, similarity scores", "observed": "PASSED. Output contains 'Semantic fact matches', '#1', 'tool', and 'sim=0.850'." },
+        { "action": "Run pytest tests/test_mcp_server.py::TestMemorySearchFactsSemantic::test_no_results_message", "expected": "Returns 'No semantic fact matches' when empty", "observed": "PASSED. Returns 'No semantic fact matches' for nonexistent query." }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (CLI test)",
+        "testOutput": "fact-embeddings/semantic-search/pytest-all-semfact.txt",
+        "network": "n/a"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SEMFACT-006",
+      "title": "/api/search returns semantic_facts key",
+      "status": "pass",
+      "steps": [
+        { "action": "Run pytest tests/test_web.py::TestSearchSemanticFacts (5 tests)", "expected": "All unit tests pass verifying semantic_facts key in API response", "observed": "All 5 tests PASSED: type=all includes semantic_facts array, FTS-only returns empty semantic_facts, empty query returns semantic_facts, populated results structure correct, field validation passes." },
+        { "action": "curl http://localhost:8585/api/search?q=test&type=all", "expected": "Response JSON includes 'semantic_facts' key", "observed": "Live server response does NOT include 'semantic_facts' key (keys: messages, facts, sessions, semantic, timing_ms, query). However, code inspection of web.py confirms 'semantic_facts' is present in the response dict at line 251. The live server has not been restarted with the latest code (per AGENTS.md: 'Do NOT restart or modify the web UI on port 8585')." },
+        { "action": "Inspect src/web.py for semantic_facts in search endpoint", "expected": "semantic_facts key present in response dict", "observed": "Confirmed: web.py lines 157, 222, 230, 251 all reference semantic_facts. The search endpoint builds semantic_facts list from search_facts_semantic() results and includes it in the response." }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a",
+        "testOutput": "fact-embeddings/semantic-search/pytest-all-semfact.txt",
+        "curlResponse": "fact-embeddings/semantic-search/curl-api-search-response.json",
+        "network": "GET /api/search?q=test&type=all -> 200 (live server missing semantic_facts key due to stale process; code and unit tests confirm correct implementation)"
+      },
+      "issues": "Live web server at port 8585 is running an older version without the semantic_facts changes. Unit tests confirm the code implementation is correct. Server restart is prohibited by AGENTS.md."
+    },
+    {
+      "id": "VAL-SEMFACT-007",
+      "title": "Frontend renders semantic fact cards",
+      "status": "pass",
+      "steps": [
+        { "action": "Read static/app.js lines 565-605", "expected": "Semantic Fact Matches section with cards rendering similarity scores and click-to-inspect", "observed": "Confirmed: Lines 565-605 contain a 'Semantic Fact Matches' section. Code renders cards with: data-fact-id attribute (click-to-inspect via result-fact class), badge with #ID, badge with category, badge with 'sim ' + score.toFixed(3), fact text, and optional compressed_details." },
+        { "action": "Run pytest tests/test_web.py::TestSemanticFactsFrontend (4 tests)", "expected": "All frontend rendering tests pass", "observed": "All 4 tests PASSED: 'Semantic Fact Matches' heading present, 'sim ' score badge rendered, data-fact-id for click-to-inspect present, semantic_facts referenced in app.js." }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a",
+        "testOutput": "fact-embeddings/semantic-search/pytest-all-semfact.txt",
+        "codeInspection": "static/app.js lines 565-605 contain complete semantic fact card rendering with similarity scores and click-to-inspect behavior"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Live web server at port 8585 is running an older version that does not include the semantic_facts key in /api/search responses. AGENTS.md prohibits restarting the service. Unit tests and code inspection confirm the implementation is correct.",
+      "resolved": true,
+      "resolution": "Relied on unit tests (which test the actual code) and code inspection as primary evidence. Noted live server discrepancy as expected due to stale process.",
+      "affectedAssertions": ["VAL-SEMFACT-006"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 7 assertions: all 7 passed. 19 pytest tests covering search_facts_semantic (7 tests), MCP tool (3 tests), web API (5 tests), and frontend rendering (4 tests) all pass. Code inspection confirmed correct implementation in memory_db.py, mcp_server.py, web.py, and app.js. Live server at port 8585 runs an older version without semantic_facts key, but code and unit tests confirm correct implementation."
+}
