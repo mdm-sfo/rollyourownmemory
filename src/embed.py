@@ -22,6 +22,21 @@ FAISS_IDS_PATH = MEMORY_DIR / "memory_ids.json"
 DEFAULT_MODEL = "all-MiniLM-L6-v2"
 BATCH_SIZE = 256
 
+EMBEDDING_MODELS: dict[str, dict[str, str | int]] = {
+    "minilm": {
+        "name": "all-MiniLM-L6-v2",
+        "dim": 384,
+        "backend": "sentence-transformers",
+        "description": "Fast, lightweight (default). Good quality for most use cases.",
+    },
+    "mpnet": {
+        "name": "all-mpnet-base-v2",
+        "dim": 768,
+        "backend": "sentence-transformers",
+        "description": "Higher quality, 2x dimensions. Best sentence-transformer model.",
+    },
+}
+
 
 def _get_faiss():
     """Lazy import of faiss. Returns the faiss module or None if not installed."""
@@ -32,7 +47,14 @@ def _get_faiss():
         return None
 
 
-def get_model(model_name=DEFAULT_MODEL):
+def get_model(model_name: str = DEFAULT_MODEL):
+    """Load an embedding model. Accepts short names (minilm, mpnet)
+    or full model names from sentence-transformers."""
+    # Check registry first
+    if model_name in EMBEDDING_MODELS:
+        spec = EMBEDDING_MODELS[model_name]
+        model_name = spec["name"]
+
     from sentence_transformers import SentenceTransformer
     return SentenceTransformer(model_name)
 
@@ -142,8 +164,23 @@ def rebuild_faiss_index(db_path: Optional[str] = None,
     return len(ids)
 
 
-def embed_messages(model_name=DEFAULT_MODEL, limit=None, batch_size=BATCH_SIZE):
+def embed_messages(model_name: str = DEFAULT_MODEL, limit: Optional[int] = None,
+                   batch_size: int = BATCH_SIZE) -> int:
     conn = get_conn(str(DB_PATH))
+
+    # Check for model mismatch
+    existing_models = conn.execute(
+        "SELECT DISTINCT model FROM embeddings LIMIT 5"
+    ).fetchall()
+    if existing_models:
+        for row in existing_models:
+            if row["model"] != model_name:
+                print(f"WARNING: Existing embeddings use model '{row['model']}' but you're "
+                      f"embedding with '{model_name}'. Mixed dimensions will degrade search quality. "
+                      f"Run 'embed.py build --reembed --model {model_name}' to re-embed everything.",
+                      file=sys.stderr)
+                break
+
     rows = get_unembedded_messages(conn, limit)
 
     if not rows:
@@ -217,6 +254,12 @@ def _search_faiss(query_vec: np.ndarray, conn: sqlite3.Connection,
             id_map = json.load(f)
     except Exception as e:
         print(f"Warning: failed to load FAISS index, falling back to brute-force: {e}",
+              file=sys.stderr)
+        return None
+
+    if index.d != query_vec.shape[0]:
+        print(f"Warning: FAISS index dimension ({index.d}) doesn't match query ({query_vec.shape[0]}). "
+              f"Falling back to brute-force. Run 'embed.py build --reembed' to rebuild.",
               file=sys.stderr)
         return None
 
@@ -299,14 +342,27 @@ def _search_bruteforce(query_vec: np.ndarray, conn: sqlite3.Connection,
     if not rows:
         return []
 
+    query_dim = query_vec.shape[0]
     ids = []
     embeddings = []
     metadata = []
+    skipped = 0
     for row in rows:
         vec = np.frombuffer(row["embedding"], dtype=np.float32)
+        if vec.shape[0] != query_dim:
+            skipped += 1
+            continue
         ids.append(row["id"])
         embeddings.append(vec)
         metadata.append(dict(row))
+
+    if skipped > 0:
+        print(f"Warning: skipped {skipped} embeddings with mismatched dimensions "
+              f"(expected {query_dim}). Run 'embed.py build --reembed' to fix.",
+              file=sys.stderr)
+
+    if not embeddings:
+        return []
 
     embeddings_matrix = np.stack(embeddings)
     similarities = embeddings_matrix @ query_vec
@@ -366,6 +422,8 @@ def main():
     build.add_argument("--model", default=DEFAULT_MODEL, help=f"Model name (default: {DEFAULT_MODEL})")
     build.add_argument("--limit", type=int, help="Max messages to embed")
     build.add_argument("--batch-size", type=int, default=BATCH_SIZE)
+    build.add_argument("--reembed", action="store_true",
+                       help="Clear all existing embeddings and re-embed from scratch with the current model")
 
     query = sub.add_parser("search", help="Semantic search")
     query.add_argument("terms", nargs="+", help="Search query")
@@ -382,6 +440,22 @@ def main():
     args = parser.parse_args()
 
     if args.command == "build":
+        if getattr(args, "reembed", False):
+            conn = get_conn(str(DB_PATH))
+            conn.execute("DELETE FROM embeddings")
+            try:
+                conn.execute("DELETE FROM fact_embeddings")
+            except sqlite3.OperationalError:
+                pass  # Table may not exist yet
+            conn.execute("DELETE FROM processed_messages WHERE processor = 'embeddings'")
+            conn.commit()
+            conn.close()
+            # Also remove the FAISS index files if they exist
+            if FAISS_INDEX_PATH.exists():
+                FAISS_INDEX_PATH.unlink()
+            if FAISS_IDS_PATH.exists():
+                FAISS_IDS_PATH.unlink()
+            print(f"Cleared all embeddings. Re-embedding with model: {args.model}")
         embed_messages(model_name=args.model, limit=args.limit, batch_size=args.batch_size)
     elif args.command == "rebuild_index":
         rebuild_faiss_index()

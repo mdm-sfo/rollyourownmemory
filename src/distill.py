@@ -281,15 +281,20 @@ def get_undistilled_sessions(conn):
 _embedding_model = None
 
 
-def _get_dedup_model():
-    """Lazy-load the sentence-transformer model for deduplication."""
+def _get_dedup_model(model_name: Optional[str] = None):
+    """Lazy-load the embedding model for deduplication.
+
+    Args:
+        model_name: Optional short name (minilm, mpnet) or full model name.
+            If None, uses the default from embed.py.
+    """
     global _embedding_model
     if _embedding_model is None:
         try:
             from src.embed import get_model as _get_embed_model, DEFAULT_MODEL as _embed_default
         except ImportError:
             from embed import get_model as _get_embed_model, DEFAULT_MODEL as _embed_default
-        _embedding_model = _get_embed_model(_embed_default)
+        _embedding_model = _get_embed_model(model_name or _embed_default)
     return _embedding_model
 
 
@@ -716,6 +721,8 @@ def main():
     run.add_argument("--model", default="llama3.3:70b", help="LLM model name (default: llama3.3:70b)")
     run.add_argument("--api-base", help="OpenAI-compatible API base URL (default: localhost:11434)")
     run.add_argument("--limit", type=int, help="Max sessions to process")
+    run.add_argument("--embed-model", default=None,
+                     help="Embedding model for dedup (minilm, mpnet). Default: match embed.py default.")
 
     show = sub.add_parser("show", help="Show extracted facts")
     show.add_argument("--category", "-c", choices=list(FACT_CATEGORIES.keys()))
@@ -742,6 +749,8 @@ def main():
     args = parser.parse_args()
 
     if args.command == "run":
+        if hasattr(args, 'embed_model') and args.embed_model:
+            _get_dedup_model(args.embed_model)  # Pre-load with specified model
         distill(use_llm=args.llm, api_base=args.api_base, limit=args.limit, model=args.model)
     elif args.command == "show":
         conn = get_conn(str(DB_PATH))
