@@ -120,6 +120,7 @@ def parse_history_file(filepath: str, offset: int = 0):
                 "content": display,
                 "timestamp": ts,
                 "machine": machine,
+                "source_tool": "claude_code",
             })
         new_offset = f.tell()
     return records, new_offset
@@ -182,6 +183,7 @@ def parse_project_jsonl(filepath: str, offset: int = 0):
                 "content": text,
                 "timestamp": ts,
                 "machine": machine,
+                "source_tool": "claude_code",
             })
         new_offset = f.tell()
     return records, new_offset
@@ -221,6 +223,7 @@ def parse_interaction_jsonl(filepath: str, offset: int = 0):
                     "content": prompt,
                     "timestamp": ts,
                     "machine": machine,
+                    "source_tool": "claude_code",
                 })
 
             # Some records have response too
@@ -234,6 +237,7 @@ def parse_interaction_jsonl(filepath: str, offset: int = 0):
                     "content": response,
                     "timestamp": ts,
                     "machine": machine,
+                    "source_tool": "claude_code",
                 })
 
             # Handle sentiment/context notes as metadata
@@ -248,6 +252,7 @@ def parse_interaction_jsonl(filepath: str, offset: int = 0):
                     "content": f"[{rtype}] {note}",
                     "timestamp": ts,
                     "machine": machine,
+                    "source_tool": "claude_code",
                 })
         new_offset = f.tell()
     return records, new_offset
@@ -293,10 +298,11 @@ def insert_records(conn, records):
     """Insert records with deduplication via INSERT OR IGNORE."""
     conn.executemany(
         """INSERT OR IGNORE INTO messages
-           (source_file, session_id, project, role, content, timestamp, machine)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+           (source_file, session_id, project, role, content, timestamp, machine, source_tool)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         [(r["source_file"], r["session_id"], r["project"],
-          r["role"], r["content"], r["timestamp"], r["machine"])
+          r["role"], r["content"], r["timestamp"], r["machine"],
+          r.get("source_tool", "claude_code"))
          for r in records],
     )
 

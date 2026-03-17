@@ -120,6 +120,11 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
         )
     """)
 
+    # Migration 7: Add source_tool column to messages table
+    msg_columns = {row[1] for row in conn.execute("PRAGMA table_info(messages)").fetchall()}
+    if msg_columns and "source_tool" not in msg_columns:
+        conn.execute("ALTER TABLE messages ADD COLUMN source_tool TEXT DEFAULT 'claude_code'")
+
     conn.commit()
 
 
