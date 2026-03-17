@@ -1,0 +1,42 @@
+{
+  "milestone": "misc-fixes",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": { "passed": true, "command": "cd /home/matthewmurray/claude-memory && source .venv/bin/activate && pytest tests/ -v", "exitCode": 0, "details": "294 passed, 3 warnings" },
+    "typecheck": { "passed": true, "command": "echo 'No typecheck configured (pure Python project)'", "exitCode": 0 },
+    "lint": { "passed": true, "command": "echo 'No linter configured'", "exitCode": 0 },
+    "ast_check": { "passed": true, "command": "python3 -c 'import ast; ast.parse(...)' for all src/*.py", "exitCode": 0 },
+    "schema_validate": { "passed": true, "command": "sqlite3 :memory: < schema.sql", "exitCode": 0 }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Updated .factory/library/ingestion-formats.md: corrected Factory project derivation from 'encoded dir name' to 'session_start.cwd' in both the Key Differences table and the body text. Added note that derive_project() is for Claude Code paths only.",
+      "sourceFeature": "fix-factory-project-derivation"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Remove or correct two statements: (1) 'Factory directories use same path encoding as Claude Code (-home-user-project = /home/user/project)' — Factory encoding does NOT preserve literal hyphens; (2) 'derive_project() currently only recognizes projects in path parts — needs extending for sessions' — derive_project() should NOT be used for Factory paths at all. Replace with: 'Factory project derivation uses session_start.cwd (not derive_project). derive_project() is for Claude Code encoded paths only.'",
+      "evidence": "Feature fix-factory-project-derivation proved both AGENTS.md statements are incorrect. The git diff (commit 06f1da9) shows derive_project()'s 'sessions' check was removed and Factory now uses session_start.cwd. The worker had to deviate from AGENTS.md guidance to implement the correct fix.",
+      "isSystemic": false
+    },
+    {
+      "target": "skills",
+      "suggestion": "Update ingest-worker skill (.factory/droids/ingest-worker/) to remove guidance 'For Factory project derivation, extend derive_project() to also recognize sessions directories'. Replace with: 'Factory project derivation uses session_start.cwd extracted from the first record. Do NOT use derive_project() for Factory paths.'",
+      "evidence": "The ingest-worker skill's Key Constraints section contains incorrect guidance that led to the original bug. Worker session 05b379bc correctly deviated from this guidance. Worker skillFeedback.suggestedChanges confirmed: 'The ingest-worker skill says extend derive_project() but this feature required the opposite.'",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}

@@ -4,7 +4,7 @@
 
 **Location:** `~/.factory/sessions/<encoded-cwd>/<session-uuid>.jsonl`
 
-**Directory encoding:** Similar to Claude Code but does NOT use double-hyphen escaping for literal hyphens. All hyphens are path separators. Example: `-home-matthewmurray-claude-memory` decodes to `/home/matthewmurray/claude/memory` (not `/home/matthewmurray/claude-memory`). This means paths with literal hyphens lose that distinction. Note: `derive_project()` applies the same logic to both Factory and Claude Code paths, so Factory projects with hyphens in directory names will have incorrect project derivation.
+**Directory encoding:** Similar to Claude Code but does NOT use double-hyphen escaping for literal hyphens. All hyphens are path separators. Example: `-home-matthewmurray-claude-memory` decodes to `/home/matthewmurray/claude/memory` (not `/home/matthewmurray/claude-memory`). **Project derivation uses `session_start.cwd` instead of `derive_project()`** to avoid this encoding ambiguity. The `derive_project()` function is for Claude Code paths only.
 
 **Record types:**
 - `session_start` — first line. Fields: `id` (session UUID), `title`, `cwd`, `version`, `callingSessionId` (optional, for subagent chains)
@@ -51,7 +51,7 @@
 |--------|------------|---------|-------|
 | Content block type | `text` | `text` | `input_text`/`output_text` |
 | History timestamp | epoch ms | N/A | epoch seconds |
-| Project derivation | encoded dir name | encoded dir name | `payload.cwd` direct path |
+| Project derivation | encoded dir name | `session_start.cwd` | `payload.cwd` direct path |
 | Session ID source | `sessionId` field | `session_start.id` | `session_meta.payload.id` |
 | Dir structure | `projects/<encoded>/` | `sessions/<encoded>/` | `sessions/<YYYY>/<MM>/<DD>/` |
 

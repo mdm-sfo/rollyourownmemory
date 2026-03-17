@@ -1,0 +1,38 @@
+{
+  "featureId": "fix-factory-project-derivation",
+  "reviewedAt": "2026-03-17T02:55:00.000Z",
+  "commitId": "06f1da9",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean, well-scoped bug fix. The worker correctly identified that Factory directory encoding does NOT use double-hyphen escaping like Claude Code, so derive_project() was mangling hyphenated project names (e.g., claude-memory → claude/memory). The fix extracts project from session_start.cwd instead, matching the pattern Codex already uses. derive_project() was properly scoped back to Claude Code paths only, with updated docstring and removed 'sessions' check. Tests cover the happy path (cwd present), None fallback (no session_start), derive_project regression (returns None for sessions paths), and continued Claude Code/ec2 project support. Worker also performed full data cleanup and re-ingestion, verifying real-world correctness with SQL queries.",
+    "issues": [
+      {
+        "file": "src/ingest.py",
+        "line": 310,
+        "severity": "non_blocking",
+        "description": "If a Factory session file lacks a session_start record (or it appears after message records due to file corruption), project remains None for all messages. This is correctly tested but could cause data quality gaps in edge cases. Consider logging a warning when messages are parsed without a project."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Mission AGENTS.md contains incorrect guidance: states 'Factory directories use same path encoding as Claude Code' and 'extend derive_project() to also recognize sessions directories'. This feature proved both statements are false — Factory does NOT use double-hyphen escaping, and derive_project() should NOT handle sessions paths. The worker had to work against these instructions.",
+      "evidence": "AGENTS.md lines: 'Factory directories use same path encoding as Claude Code (-home-user-project = /home/user/project)' and 'derive_project() currently only recognizes projects in path parts — needs extending for sessions'. The git diff shows the opposite was implemented."
+    },
+    {
+      "area": "skills",
+      "observation": "ingest-worker SKILL.md contains incorrect guidance: 'For Factory project derivation, extend derive_project() to also recognize sessions directories (not just projects)'. This is exactly what this feature reverted. The worker's skillFeedback correctly flagged this: 'The ingest-worker skill says extend derive_project() but this feature required the opposite.'",
+      "evidence": ".factory/skills/ingest-worker/SKILL.md Key Constraints section. Handoff skillFeedback.suggestedChanges confirms the deviation was necessary."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Library doc ingestion-formats.md Key Differences table still lists Factory project derivation as 'encoded dir name', which is now incorrect — Factory uses session_start.cwd. The body text correctly notes the encoding issue but the summary table is misleading.",
+      "evidence": ".factory/library/ingestion-formats.md Key Differences table row: 'Factory | encoded dir name' for Project derivation. Should say 'session_start.cwd' to match the actual implementation after this fix."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The fix correctly addresses the Factory project derivation bug by using session_start.cwd instead of derive_project(). Implementation is clean, tests are comprehensive, and the worker verified correctness against real production data. One non-blocking note about missing project warnings. Three shared state observations: AGENTS.md, the ingest-worker skill, and ingestion-formats.md all contain outdated/incorrect guidance about Factory project derivation that should be updated."
+}
