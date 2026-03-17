@@ -454,10 +454,33 @@ async def ask(
     )
 
 
+@app.get("/api/facts/filters")
+async def facts_filters():
+    """Return distinct project and source_tool values for filter dropdowns."""
+    conn = memory_db.get_conn()
+    try:
+        projects = [
+            r[0] for r in conn.execute(
+                "SELECT DISTINCT project FROM facts WHERE project IS NOT NULL AND project != '' ORDER BY project"
+            ).fetchall()
+        ]
+        source_tools = [
+            r[0] for r in conn.execute(
+                "SELECT DISTINCT source_tool FROM facts WHERE source_tool IS NOT NULL AND source_tool != '' ORDER BY source_tool"
+            ).fetchall()
+        ]
+        return {"projects": projects, "source_tools": source_tools}
+    except Exception:
+        return {"projects": [], "source_tools": []}
+    finally:
+        conn.close()
+
+
 @app.get("/api/facts")
 async def list_facts(
     category: Optional[str] = Query(None, description="Filter by category"),
     project: Optional[str] = Query(None, description="Filter by project"),
+    source_tool: Optional[str] = Query(None, description="Filter by source tool"),
     min_confidence: Optional[float] = Query(None, ge=0.0, le=1.0, description="Minimum confidence"),
     max_confidence: Optional[float] = Query(None, ge=0.0, le=1.0, description="Maximum confidence"),
     sort: str = Query("timestamp", description="Sort field: timestamp, confidence, category"),
@@ -478,6 +501,9 @@ async def list_facts(
     if project:
         where_clauses.append("f.project LIKE ?")
         params.append(f"%{project}%")
+    if source_tool:
+        where_clauses.append("f.source_tool = ?")
+        params.append(source_tool)
     if min_confidence is not None:
         where_clauses.append("f.confidence >= ?")
         params.append(min_confidence)
@@ -499,7 +525,7 @@ async def list_facts(
     # Query with pagination
     data_sql = f"""
         SELECT f.id, f.fact, f.category, f.confidence, f.project,
-               f.timestamp, f.compressed_details
+               f.timestamp, f.compressed_details, f.source_tool
         FROM facts f
         WHERE {where_sql}
         ORDER BY {sort_col} {sort_order}
@@ -525,6 +551,7 @@ async def list_facts(
             "project": r["project"],
             "timestamp": r["timestamp"],
             "compressed_details": cd,
+            "source_tool": r["source_tool"] if "source_tool" in r.keys() else None,
         })
 
     conn.close()

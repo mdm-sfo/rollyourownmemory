@@ -1113,6 +1113,7 @@
         total: 0,
         category: "",
         project: "",
+        sourceTool: "",
         minConfidence: "",
         maxConfidence: "",
         sort: "timestamp",
@@ -1137,6 +1138,9 @@
         }
         if (factsState.project) {
             url += "&project=" + encodeURIComponent(factsState.project);
+        }
+        if (factsState.sourceTool) {
+            url += "&source_tool=" + encodeURIComponent(factsState.sourceTool);
         }
         if (factsState.minConfidence !== "") {
             url += "&min_confidence=" + encodeURIComponent(factsState.minConfidence);
@@ -1207,6 +1211,13 @@
                 html.push(
                     '<span class="badge" style="background:#e3f2fd;color:#1565c0">' +
                         escapeHtml(fact.project) +
+                        "</span>"
+                );
+            }
+            if (fact.source_tool) {
+                html.push(
+                    '<span class="badge" style="background:#fce4ec;color:#c62828">' +
+                        escapeHtml(fact.source_tool) +
                         "</span>"
                 );
             }
@@ -1577,34 +1588,38 @@
         }
     }
 
-    // Populate project dropdown from DB
-    function populateFactsProjectFilter() {
-        fetch("/api/facts?limit=200&sort=timestamp&order=desc")
+    // Populate project and source_tool dropdowns from /api/facts/filters
+    function populateFactsFilters() {
+        fetch("/api/facts/filters")
             .then(function (resp) {
                 return resp.json();
             })
             .then(function (data) {
-                var projects = {};
-                (data.facts || []).forEach(function (f) {
-                    if (f.project) {
-                        projects[f.project] = true;
-                    }
-                });
-                var select = document.getElementById(
+                var projectSelect = document.getElementById(
                     "facts-project-filter"
                 );
-                if (select) {
-                    var keys = Object.keys(projects).sort();
-                    keys.forEach(function (p) {
+                if (projectSelect) {
+                    (data.projects || []).forEach(function (p) {
                         var opt = document.createElement("option");
                         opt.value = p;
                         opt.textContent = p;
-                        select.appendChild(opt);
+                        projectSelect.appendChild(opt);
+                    });
+                }
+                var sourceToolSelect = document.getElementById(
+                    "facts-source-tool-filter"
+                );
+                if (sourceToolSelect) {
+                    (data.source_tools || []).forEach(function (st) {
+                        var opt = document.createElement("option");
+                        opt.value = st;
+                        opt.textContent = st;
+                        sourceToolSelect.appendChild(opt);
                     });
                 }
             })
             .catch(function () {
-                // Ignore errors — the filter just won't have project options
+                // Ignore errors — the filters just won't have options
             });
     }
 
@@ -1636,6 +1651,17 @@
         if (projectFilter) {
             projectFilter.addEventListener("change", function () {
                 factsState.project = this.value;
+                factsState.offset = 0;
+                loadFacts();
+            });
+        }
+
+        var sourceToolFilter = document.getElementById(
+            "facts-source-tool-filter"
+        );
+        if (sourceToolFilter) {
+            sourceToolFilter.addEventListener("change", function () {
+                factsState.sourceTool = this.value;
                 factsState.offset = 0;
                 loadFacts();
             });
@@ -1682,7 +1708,7 @@
 
     // Initialize facts controls and load on nav
     initFactsControls();
-    populateFactsProjectFilter();
+    populateFactsFilters();
 
     // Update nav click handler to load facts when navigating to facts section
     navLinks.forEach(function (link) {

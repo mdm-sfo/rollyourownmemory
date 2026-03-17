@@ -125,6 +125,21 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
     if msg_columns and "source_tool" not in msg_columns:
         conn.execute("ALTER TABLE messages ADD COLUMN source_tool TEXT DEFAULT 'claude_code'")
 
+    # Migration 8: Add source_tool column to facts table and backfill from messages
+    fact_columns = {row[1] for row in conn.execute("PRAGMA table_info(facts)").fetchall()}
+    if "source_tool" not in fact_columns:
+        conn.execute("ALTER TABLE facts ADD COLUMN source_tool TEXT DEFAULT 'claude_code'")
+        # Backfill source_tool from the linked message's source_tool (if messages table exists)
+        has_messages = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='messages'"
+        ).fetchone()
+        if has_messages:
+            conn.execute("""
+                UPDATE facts SET source_tool = (
+                    SELECT m.source_tool FROM messages m WHERE m.id = facts.source_message_id
+                ) WHERE source_message_id IS NOT NULL
+            """)
+
     conn.commit()
 
 
