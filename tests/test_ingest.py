@@ -483,10 +483,42 @@ class TestParseFactoryJsonl:
         finally:
             Path(path).unlink()
 
-    def test_factory_project_derivation_sessions_path(self) -> None:
-        """VAL-FACTORY-003: derive_project works with 'sessions' directory paths."""
-        source = "/home/user/.factory/sessions/-home-user-my--project/session.jsonl"
-        assert derive_project(source) == "/home/user/my-project"
+    def test_factory_project_from_session_start_cwd(self) -> None:
+        """VAL-FACTORY-003: Factory project is derived from session_start.cwd, not derive_project()."""
+        lines = [
+            {"type": "session_start", "id": "sess-001", "cwd": "/home/user/my-project"},
+            {
+                "type": "message",
+                "id": "msg-1",
+                "timestamp": "2026-03-15T10:00:00.000Z",
+                "message": {"role": "user", "content": [{"type": "text", "text": "Hello"}]},
+            },
+        ]
+        path = self._write_jsonl(lines)
+        try:
+            records, _ = parse_factory_jsonl(path)
+            assert len(records) == 1
+            assert records[0]["project"] == "/home/user/my-project"
+        finally:
+            Path(path).unlink()
+
+    def test_factory_project_none_without_session_start(self) -> None:
+        """Factory project is None if no session_start record exists."""
+        lines = [
+            {
+                "type": "message",
+                "id": "msg-1",
+                "timestamp": "2026-03-15T10:00:00.000Z",
+                "message": {"role": "user", "content": [{"type": "text", "text": "Hello"}]},
+            },
+        ]
+        path = self._write_jsonl(lines)
+        try:
+            records, _ = parse_factory_jsonl(path)
+            assert len(records) == 1
+            assert records[0]["project"] is None
+        finally:
+            Path(path).unlink()
 
     def test_factory_malformed_lines_skipped(self) -> None:
         """VAL-INT-006: Malformed JSONL lines are skipped gracefully."""
@@ -980,19 +1012,19 @@ class TestParseCodexHistory:
 
 
 class TestDeriveProjectSessions:
-    """derive_project handles 'sessions' directory paths for Factory."""
+    """derive_project is for Claude Code paths only — does NOT handle Factory 'sessions' paths."""
 
-    def test_factory_sessions_path(self) -> None:
-        """VAL-FACTORY-003: 'sessions' directory recognized like 'projects'."""
+    def test_factory_sessions_path_returns_none(self) -> None:
+        """Factory 'sessions' paths are NOT handled by derive_project (uses cwd instead)."""
         source = "/home/user/.factory/sessions/-home-user-my--project/abc.jsonl"
-        assert derive_project(source) == "/home/user/my-project"
-
-    def test_factory_sessions_simple(self) -> None:
-        """Simple factory sessions path."""
-        source = "/home/user/.factory/sessions/-home-user-claude--memory/session.jsonl"
-        assert derive_project(source) == "/home/user/claude-memory"
+        assert derive_project(source) is None
 
     def test_still_works_for_claude_projects(self) -> None:
         """Existing 'projects' paths still work."""
         source = "/home/user/.claude/projects/-home-user-simple/session.jsonl"
         assert derive_project(source) == "/home/user/simple"
+
+    def test_still_works_for_ec2_projects(self) -> None:
+        """Wormhole ec2-projects paths still work."""
+        source = "/home/user/wormhole/claude-logs/ec2-projects/-home-user-myapp/session.jsonl"
+        assert derive_project(source) == "/home/user/myapp"

@@ -71,15 +71,18 @@ def derive_machine(source_file: str) -> str:
 
 
 def derive_project(source_file: str) -> str:
-    """Extract project name from Claude's encoded project directory names.
+    """Extract project name from Claude Code's encoded project directory names.
 
-    Claude encodes paths like /home/user/my-project as -home-user-my--project
+    Claude Code encodes paths like /home/user/my-project as -home-user-my--project
     (single hyphens are path separators, double hyphens are literal hyphens).
-    Handles .claude/projects/, .factory/sessions/, and wormhole ec2-projects/ paths.
+    Handles .claude/projects/ and wormhole ec2-projects/ paths.
+
+    NOTE: This function is for Claude Code paths only. Factory.ai and Codex CLI
+    use different project derivation (cwd from session_start / session_meta).
     """
     parts = Path(source_file).parts
     for i, p in enumerate(parts):
-        if (p.endswith("projects") or p == "sessions") and i + 1 < len(parts):
+        if p.endswith("projects") and i + 1 < len(parts):
             raw = parts[i + 1]
             placeholder = "\x00"
             escaped = raw.replace("--", placeholder)
@@ -284,7 +287,7 @@ def parse_factory_jsonl(filepath: str, offset: int = 0):
     """
     records = []
     source_file = str(filepath)
-    project = derive_project(source_file)
+    project = None
     session_id = None
 
     with open(filepath, "rb") as f:
@@ -302,6 +305,7 @@ def parse_factory_jsonl(filepath: str, offset: int = 0):
 
             if rtype == "session_start":
                 session_id = d.get("id")
+                project = d.get("cwd")
                 continue
 
             if rtype != "message":
