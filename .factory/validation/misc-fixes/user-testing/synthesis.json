@@ -1,0 +1,17 @@
+{
+  "milestone": "misc-fixes",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 0,
+    "passed": 0,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "notes": "The misc-fixes milestone has one implementation feature (fix-factory-project-derivation) with no fulfills assertions. No user-facing assertions to test. The feature was a bug fix to use session_start.cwd for Factory project derivation instead of derive_project(). Scrutiny validation already passed for this milestone.",
+  "previousRound": null
+}
