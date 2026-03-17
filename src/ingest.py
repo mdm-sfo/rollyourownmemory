@@ -25,6 +25,9 @@ HOME = Path.home()
 HISTORY_FILE = HOME / ".claude" / "history.jsonl"
 PROJECTS_DIR = HOME / ".claude" / "projects"
 WORMHOLE_LOGS = HOME / "wormhole" / "claude-logs"
+FACTORY_SESSIONS = HOME / ".factory" / "sessions"
+CODEX_SESSIONS = HOME / ".codex" / "sessions"
+CODEX_HISTORY = HOME / ".codex" / "history.jsonl"
 
 # Record types to skip in project JONLs
 SKIP_TYPES = {"progress", "file-history-snapshot", "queue-operation", "system"}
@@ -72,11 +75,11 @@ def derive_project(source_file: str) -> str:
 
     Claude encodes paths like /home/user/my-project as -home-user-my--project
     (single hyphens are path separators, double hyphens are literal hyphens).
-    Handles both .claude/projects/ and wormhole ec2-projects/ paths.
+    Handles .claude/projects/, .factory/sessions/, and wormhole ec2-projects/ paths.
     """
     parts = Path(source_file).parts
     for i, p in enumerate(parts):
-        if p.endswith("projects") and i + 1 < len(parts):
+        if (p.endswith("projects") or p == "sessions") and i + 1 < len(parts):
             raw = parts[i + 1]
             placeholder = "\x00"
             escaped = raw.replace("--", placeholder)
@@ -258,6 +261,188 @@ def parse_interaction_jsonl(filepath: str, offset: int = 0):
     return records, new_offset
 
 
+def extract_codex_content(payload):
+    """Extract text from Codex content blocks (input_text / output_text types)."""
+    content = payload.get("content")
+    if not isinstance(content, list):
+        return None
+    texts = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") in ("input_text", "output_text"):
+            t = block.get("text", "").strip()
+            if t:
+                texts.append(t)
+    return "\n\n".join(texts) if texts else None
+
+
+def parse_factory_jsonl(filepath: str, offset: int = 0):
+    """Parse Factory.ai session JSONL — user/assistant messages.
+
+    First line is type='session_start' with session id.
+    Message records have type='message' with message.role and message.content[].
+    Skips: session_start, session_end, todo_state. Skips thinking content blocks.
+    """
+    records = []
+    source_file = str(filepath)
+    project = derive_project(source_file)
+    session_id = None
+
+    with open(filepath, "rb") as f:
+        f.seek(offset)
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            rtype = d.get("type", "")
+
+            if rtype == "session_start":
+                session_id = d.get("id")
+                continue
+
+            if rtype != "message":
+                continue
+
+            message = d.get("message")
+            if not isinstance(message, dict):
+                continue
+
+            role = message.get("role")
+            if role not in ("user", "assistant"):
+                continue
+
+            text = extract_text_content(message)
+            if not text:
+                continue
+
+            ts = d.get("timestamp")
+
+            records.append({
+                "source_file": source_file,
+                "session_id": session_id,
+                "project": project,
+                "role": role,
+                "content": text,
+                "timestamp": ts,
+                "machine": "spark",
+                "source_tool": "factory",
+            })
+        new_offset = f.tell()
+    return records, new_offset
+
+
+def parse_codex_session_jsonl(filepath: str, offset: int = 0):
+    """Parse Codex CLI session JSONL — user/assistant messages.
+
+    First line is type='session_meta' with payload.id (session UUID) and payload.cwd.
+    Message records are type='response_item' with payload.type='message'.
+    Content blocks use input_text/output_text instead of text.
+    Ingests both commentary and final_answer phases.
+    Skips: developer role, reasoning, function_call, function_call_output, web_search_call.
+    """
+    records = []
+    source_file = str(filepath)
+    session_id = None
+    project = None
+
+    with open(filepath, "rb") as f:
+        f.seek(offset)
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            rtype = d.get("type", "")
+
+            if rtype == "session_meta":
+                payload = d.get("payload", {})
+                session_id = payload.get("id")
+                project = payload.get("cwd")
+                continue
+
+            if rtype != "response_item":
+                continue
+
+            payload = d.get("payload", {})
+            if not isinstance(payload, dict):
+                continue
+
+            payload_type = payload.get("type")
+            if payload_type != "message":
+                continue
+
+            role = payload.get("role")
+            if role not in ("user", "assistant"):
+                continue
+
+            text = extract_codex_content(payload)
+            if not text:
+                continue
+
+            ts = d.get("timestamp")
+
+            records.append({
+                "source_file": source_file,
+                "session_id": session_id,
+                "project": project,
+                "role": role,
+                "content": text,
+                "timestamp": ts,
+                "machine": "spark",
+                "source_tool": "codex",
+            })
+        new_offset = f.tell()
+    return records, new_offset
+
+
+def parse_codex_history(filepath: str, offset: int = 0):
+    """Parse ~/.codex/history.jsonl — user prompts with epoch-second timestamps."""
+    records = []
+    source_file = str(filepath)
+
+    with open(filepath, "rb") as f:
+        f.seek(offset)
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            text = d.get("text", "").strip()
+            if not text:
+                continue
+
+            ts = d.get("ts")
+            if isinstance(ts, (int, float)):
+                ts = datetime.fromtimestamp(ts).isoformat()
+
+            session_id = d.get("session_id")
+
+            records.append({
+                "source_file": source_file,
+                "session_id": session_id,
+                "project": None,
+                "role": "user",
+                "content": text,
+                "timestamp": ts,
+                "machine": "spark",
+                "source_tool": "codex",
+            })
+        new_offset = f.tell()
+    return records, new_offset
+
+
 def discover_sources():
     """Find all JSONL source files."""
     sources = []
@@ -290,6 +475,22 @@ def discover_sources():
             if project_dir.is_dir():
                 for jsonl in project_dir.glob("*.jsonl"):
                     sources.append(("project", str(jsonl)))
+
+    # Factory.ai session JONLs
+    if FACTORY_SESSIONS.exists():
+        for subdir in FACTORY_SESSIONS.iterdir():
+            if subdir.is_dir():
+                for jsonl in subdir.glob("*.jsonl"):
+                    sources.append(("factory_session", str(jsonl)))
+
+    # Codex CLI session JONLs (recursive: sessions/YYYY/MM/DD/*.jsonl)
+    if CODEX_SESSIONS.exists():
+        for jsonl in CODEX_SESSIONS.rglob("*.jsonl"):
+            sources.append(("codex_session", str(jsonl)))
+
+    # Codex history
+    if CODEX_HISTORY.exists():
+        sources.append(("codex_history", str(CODEX_HISTORY)))
 
     return sources
 
@@ -339,6 +540,12 @@ def main():
             records, new_offset = parse_project_jsonl(filepath, offset)
         elif src_type == "interaction":
             records, new_offset = parse_interaction_jsonl(filepath, offset)
+        elif src_type == "factory_session":
+            records, new_offset = parse_factory_jsonl(filepath, offset)
+        elif src_type == "codex_session":
+            records, new_offset = parse_codex_session_jsonl(filepath, offset)
+        elif src_type == "codex_history":
+            records, new_offset = parse_codex_history(filepath, offset)
         else:
             continue
 
