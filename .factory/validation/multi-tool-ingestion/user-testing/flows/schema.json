@@ -1,0 +1,80 @@
+{
+  "groupId": "schema",
+  "testedAt": "2026-03-16T00:00:00Z",
+  "isolation": {
+    "projectRoot": "/home/matthewmurray/claude-memory",
+    "pythonVenv": "/home/matthewmurray/claude-memory/.venv",
+    "productionDb": "/home/matthewmurray/claude-memory/memory.db (read-only queries)",
+    "writeTests": "temporary DB copies only"
+  },
+  "toolsUsed": ["sqlite3", "python3"],
+  "assertions": [
+    {
+      "id": "VAL-SCHEMA-001",
+      "title": "source_tool column exists",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run PRAGMA table_info(messages) on production DB",
+          "expected": "source_tool column exists with type TEXT and default 'claude_code'",
+          "observed": "Column 10: source_tool|TEXT|default='claude_code' — confirmed present"
+        }
+      ],
+      "evidence": {
+        "cliOutput": "multi-tool-ingestion/schema/VAL-SCHEMA-001-pragma-output.txt",
+        "consoleErrors": "none",
+        "details": "PRAGMA output shows: 10|source_tool|TEXT|0|'claude_code'|0"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SCHEMA-002",
+      "title": "Existing rows retain default value",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run SELECT COUNT(*) FROM messages WHERE source_tool IS NULL",
+          "expected": "Returns 0",
+          "observed": "Returned 0"
+        }
+      ],
+      "evidence": {
+        "cliOutput": "multi-tool-ingestion/schema/VAL-SCHEMA-002-null-count.txt",
+        "consoleErrors": "none",
+        "details": "Query returned 0 — no NULL source_tool values exist"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SCHEMA-003",
+      "title": "Migration is idempotent",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Copy production DB to temp file",
+          "expected": "Temp copy created successfully",
+          "observed": "Temp copy created with 19317 message rows"
+        },
+        {
+          "action": "Run migrate_schema() via get_conn() on temp DB (first time)",
+          "expected": "No errors, row count unchanged",
+          "observed": "No errors, row count: 19317 (unchanged)"
+        },
+        {
+          "action": "Run migrate_schema() via get_conn() on temp DB (second time)",
+          "expected": "No errors, row count unchanged",
+          "observed": "No errors, row count: 19317 (unchanged)"
+        }
+      ],
+      "evidence": {
+        "cliOutput": "multi-tool-ingestion/schema/VAL-SCHEMA-003-idempotency.txt",
+        "consoleErrors": "none",
+        "details": "migrate_schema() ran twice without error. Row counts: before=19317, after_1st=19317, after_2nd=19317. Migration uses 'IF NOT EXISTS' and column existence checks for idempotency."
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 3 assertions: 3 passed, 0 failed. The source_tool column exists with correct type/default, no NULL values remain, and migration is idempotent."
+}

@@ -1,0 +1,202 @@
+{
+  "groupId": "factory",
+  "testedAt": "2026-03-16T23:45:00Z",
+  "isolation": {
+    "projectRoot": "/home/matthewmurray/claude-memory",
+    "pythonVenv": "/home/matthewmurray/claude-memory/.venv",
+    "productionDb": "/home/matthewmurray/claude-memory/memory.db (read-only queries)",
+    "realFactorySessions": "~/.factory/sessions/ (341 JSONL files discovered)"
+  },
+  "toolsUsed": ["pytest", "sqlite3", "python"],
+  "assertions": [
+    {
+      "id": "VAL-FACTORY-001",
+      "title": "Factory session discovery",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run discover_sources() via Python script",
+          "expected": "Source list includes entries with type 'factory_session'",
+          "observed": "discover_sources() returned 663 total sources, 341 with type='factory_session' under ~/.factory/sessions/<encoded-cwd>/"
+        },
+        {
+          "action": "Verify paths match expected pattern",
+          "expected": "Paths are under ~/.factory/sessions/<encoded-cwd>/*.jsonl",
+          "observed": "All factory_session paths match pattern, e.g. /home/matthewmurray/.factory/sessions/-home-matthewmurray-projects-arcane-web/781244f7-f4ea-4a11-a963-c92e7d71e014.jsonl"
+        }
+      ],
+      "evidence": {
+        "terminalOutput": ["multi-tool-ingestion/factory/discover-sources-output.txt"],
+        "codeInspection": "discover_sources() in src/ingest.py iterates FACTORY_SESSIONS subdirectories and globs *.jsonl, appending ('factory_session', path)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FACTORY-002",
+      "title": "Factory message parsing",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run pytest -k factory (12 tests in TestParseFactoryJsonl + TestDeriveProjectSessions)",
+          "expected": "All factory parser tests pass, covering: message extraction, skipping session_start/session_end/todo_state, skipping thinking blocks",
+          "observed": "12 tests passed, 0 failed. Tests cover: test_parse_factory_messages, test_factory_skips_non_message_types, test_factory_skips_thinking_blocks, test_factory_skips_only_thinking_messages"
+        },
+        {
+          "action": "Verify test_factory_skips_non_message_types covers session_start, session_end, todo_state",
+          "expected": "Synthetic JSONL with session_start, todo_state, session_end; only 'message' type extracted",
+          "observed": "Test creates JSONL with session_start, message (user), todo_state, session_end — asserts len(records)==1 and content=='Hello'"
+        },
+        {
+          "action": "Verify thinking block handling",
+          "expected": "Thinking content blocks are filtered out, only text blocks extracted",
+          "observed": "test_factory_skips_thinking_blocks: message with thinking+text blocks → only 'Visible response' extracted. test_factory_skips_only_thinking_messages: message with only thinking blocks → 0 records"
+        }
+      ],
+      "evidence": {
+        "terminalOutput": ["multi-tool-ingestion/factory/pytest-factory-output.txt"],
+        "tests": [
+          "TestParseFactoryJsonl::test_parse_factory_messages",
+          "TestParseFactoryJsonl::test_factory_skips_non_message_types",
+          "TestParseFactoryJsonl::test_factory_skips_thinking_blocks",
+          "TestParseFactoryJsonl::test_factory_skips_only_thinking_messages"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FACTORY-003",
+      "title": "Factory project derivation",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run pytest test_factory_project_from_session_start_cwd",
+          "expected": "Project is derived from session_start.cwd field",
+          "observed": "Test passes: session_start with cwd='/home/user/my-project' → records[0]['project'] == '/home/user/my-project'"
+        },
+        {
+          "action": "Run pytest test_factory_project_none_without_session_start",
+          "expected": "Project is None if no session_start record",
+          "observed": "Test passes: without session_start, records[0]['project'] is None"
+        },
+        {
+          "action": "Run pytest test_factory_sessions_path_returns_none",
+          "expected": "derive_project() returns None for Factory sessions paths (cwd is used instead)",
+          "observed": "Test passes: derive_project('/home/user/.factory/sessions/-home-user-my--project/abc.jsonl') returns None"
+        },
+        {
+          "action": "Query production DB for factory project names",
+          "expected": "Real projects derived correctly from cwd",
+          "observed": "SELECT DISTINCT project FROM messages WHERE source_tool='factory' returns: /home, /home/matthewmurray, /home/matthewmurray/claude-memory, /home/matthewmurray/projects, /home/matthewmurray/projects/alpha-test, /home/matthewmurray/projects/arcane-web"
+        }
+      ],
+      "evidence": {
+        "terminalOutput": [
+          "multi-tool-ingestion/factory/pytest-factory-output.txt",
+          "multi-tool-ingestion/factory/db-queries-output.txt"
+        ],
+        "tests": [
+          "TestParseFactoryJsonl::test_factory_project_from_session_start_cwd",
+          "TestParseFactoryJsonl::test_factory_project_none_without_session_start",
+          "TestDeriveProjectSessions::test_factory_sessions_path_returns_none"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FACTORY-004",
+      "title": "Factory source_tool tagging",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run pytest test_factory_source_tool_tagging",
+          "expected": "All Factory records have source_tool='factory'",
+          "observed": "Test passes: asserts all(r['source_tool'] == 'factory' for r in records)"
+        },
+        {
+          "action": "Query production DB: SELECT DISTINCT source_tool FROM messages WHERE source_file LIKE '%/.factory/sessions/%'",
+          "expected": "Returns only 'factory'",
+          "observed": "Returns: factory"
+        },
+        {
+          "action": "Query production DB: SELECT source_tool, COUNT(*) FROM messages WHERE source_tool='factory' GROUP BY source_tool",
+          "expected": "Confirms factory records exist with correct tagging",
+          "observed": "factory|5795 — 5795 messages all tagged as 'factory'"
+        }
+      ],
+      "evidence": {
+        "terminalOutput": [
+          "multi-tool-ingestion/factory/pytest-factory-output.txt",
+          "multi-tool-ingestion/factory/db-queries-output.txt"
+        ],
+        "tests": ["TestParseFactoryJsonl::test_factory_source_tool_tagging"],
+        "dbQuery": "SELECT DISTINCT source_tool FROM messages WHERE source_file LIKE '%/.factory/sessions/%' → factory"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FACTORY-005",
+      "title": "Factory content extraction",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run pytest test_factory_content_extraction_multi_block",
+          "expected": "Multi-block content with text, tool_use blocks extracts correctly",
+          "observed": "Test passes: content with [text('First part'), tool_use, text('Second part')] → 'First part\\n\\nSecond part'"
+        },
+        {
+          "action": "Verify extract_text_content is used by parse_factory_jsonl",
+          "expected": "Factory parser delegates to extract_text_content() for content extraction",
+          "observed": "Code inspection confirms parse_factory_jsonl calls extract_text_content(message) at line ~215 of ingest.py"
+        },
+        {
+          "action": "Verify existing extract_text_content tests cover edge cases",
+          "expected": "Tests for string content, list of blocks, none input, empty blocks",
+          "observed": "TestExtractTextContent class has 5 tests: string_content, list_of_blocks, none_input, empty_string_content, empty_blocks — all pass"
+        }
+      ],
+      "evidence": {
+        "terminalOutput": ["multi-tool-ingestion/factory/pytest-factory-output.txt"],
+        "tests": [
+          "TestParseFactoryJsonl::test_factory_content_extraction_multi_block",
+          "TestExtractTextContent::test_list_of_blocks",
+          "TestExtractTextContent::test_string_content"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FACTORY-006",
+      "title": "Factory session_id extraction",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run pytest test_factory_session_id_from_session_start",
+          "expected": "session_id extracted from session_start record's 'id' field and applied to all messages",
+          "observed": "Test passes: session_start with id='abcd-1234-factory-session' → records[0]['session_id'] == 'abcd-1234-factory-session'"
+        },
+        {
+          "action": "Verify session_id propagation in production DB",
+          "expected": "Factory messages have non-null session_ids",
+          "observed": "SELECT COUNT(DISTINCT session_id) FROM messages WHERE source_tool='factory' AND session_id IS NOT NULL → 331 distinct sessions"
+        },
+        {
+          "action": "Verify code propagates session_id to all messages",
+          "expected": "parse_factory_jsonl sets session_id once from session_start, applies to all subsequent messages",
+          "observed": "Code inspection: session_id is set at session_start, then included in every record dict"
+        }
+      ],
+      "evidence": {
+        "terminalOutput": [
+          "multi-tool-ingestion/factory/pytest-factory-output.txt",
+          "multi-tool-ingestion/factory/db-queries-output.txt"
+        ],
+        "tests": ["TestParseFactoryJsonl::test_factory_session_id_from_session_start"],
+        "dbQuery": "SELECT COUNT(DISTINCT session_id) FROM messages WHERE source_tool='factory' AND session_id IS NOT NULL → 331"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 6 assertions: 6 passed, 0 failed. All 12 factory-related pytest tests pass. Production DB confirms 5795 factory messages across 331 sessions with correct source_tool tagging and project derivation from session_start.cwd."
+}

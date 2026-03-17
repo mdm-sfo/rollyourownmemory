@@ -1,0 +1,204 @@
+{
+  "groupId": "codex",
+  "testedAt": "2026-03-16T17:30:00Z",
+  "isolation": {
+    "projectRoot": "/home/matthewmurray/claude-memory",
+    "pythonVenv": "/home/matthewmurray/claude-memory/.venv",
+    "productionDb": "/home/matthewmurray/claude-memory/memory.db (read-only queries)",
+    "codexSessions": "~/.codex/sessions/ (5 JSONL files)",
+    "codexHistory": "~/.codex/history.jsonl"
+  },
+  "toolsUsed": ["pytest", "sqlite3", "python"],
+  "assertions": [
+    {
+      "id": "VAL-CODEX-001",
+      "title": "Codex session discovery",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run discover_sources() via Python",
+          "expected": "Source list includes entries with type codex_session",
+          "observed": "Found 5 codex_session entries and 1 codex_history entry (6 total codex sources)"
+        },
+        {
+          "action": "Verify paths match ~/.codex/sessions/<YYYY>/<MM>/<DD>/ pattern",
+          "expected": "All codex_session paths follow date-based directory structure",
+          "observed": "All 5 paths follow pattern: ~/.codex/sessions/2026/{02,03}/{09,11,16,23}/*.jsonl"
+        }
+      ],
+      "evidence": {
+        "terminalOutput": "multi-tool-ingestion/codex/db-queries.txt (discover_sources section)",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CODEX-002",
+      "title": "Codex message parsing",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run pytest test_parse_codex_session_messages",
+          "expected": "Extracts user/assistant from response_item where payload.type==message",
+          "observed": "PASSED — extracts user and assistant messages correctly"
+        },
+        {
+          "action": "Run pytest test_codex_skips_developer_and_non_message",
+          "expected": "Skips developer role, reasoning, function_call, function_call_output, web_search_call",
+          "observed": "PASSED — all 5 non-message types skipped, only real user message extracted"
+        },
+        {
+          "action": "Run pytest test_codex_skips_event_msg_and_turn_context",
+          "expected": "Non-response_item types skipped",
+          "observed": "PASSED — event_msg and turn_context skipped"
+        }
+      ],
+      "evidence": {
+        "terminalOutput": "multi-tool-ingestion/codex/pytest-codex-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CODEX-003",
+      "title": "Codex commentary and final_answer",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run pytest test_codex_both_phases_ingested",
+          "expected": "Both commentary and final_answer phase messages are ingested",
+          "observed": "PASSED — 2 records extracted, one with 'Commentary phase' content, one with 'Final answer phase' content"
+        }
+      ],
+      "evidence": {
+        "terminalOutput": "multi-tool-ingestion/codex/pytest-codex-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CODEX-004",
+      "title": "Codex content block extraction",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run pytest test_codex_content_blocks",
+          "expected": "input_text and output_text content blocks extracted correctly",
+          "observed": "PASSED — multi-block input_text joined as 'First part\\n\\nSecond part', multi-block output_text joined as 'Response A\\n\\nResponse B'"
+        },
+        {
+          "action": "Verify extract_codex_content() function in ingest.py",
+          "expected": "Function handles input_text and output_text block types",
+          "observed": "Code confirms: block.get('type') in ('input_text', 'output_text') is the filter"
+        }
+      ],
+      "evidence": {
+        "terminalOutput": "multi-tool-ingestion/codex/pytest-codex-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CODEX-005",
+      "title": "Codex project derivation",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run pytest test_codex_project_from_cwd",
+          "expected": "Project derived from session_meta.payload.cwd",
+          "observed": "PASSED — project set to '/home/user/my-project' from session_meta cwd field"
+        },
+        {
+          "action": "Query production DB for codex projects",
+          "expected": "Projects derived from real codex sessions",
+          "observed": "SELECT DISTINCT project FROM messages WHERE source_tool='codex' returns '/home/matthewmurray' (and NULL for history entries)"
+        }
+      ],
+      "evidence": {
+        "terminalOutput": "multi-tool-ingestion/codex/pytest-codex-output.txt and db-queries.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CODEX-006",
+      "title": "Codex history parsing",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run pytest test_parse_codex_history",
+          "expected": "Parses history.jsonl with epoch-second timestamps and session_id",
+          "observed": "PASSED — timestamps contain '2026', session_id='sess-001', role='user', source_tool='codex'"
+        },
+        {
+          "action": "Run pytest test_codex_history_timestamp_is_seconds_not_ms",
+          "expected": "Epoch seconds (not milliseconds) converted to ISO 8601",
+          "observed": "PASSED — ts=1700000000 correctly converted to datetime.fromtimestamp(1700000000).isoformat() (2023-11-14T...)"
+        },
+        {
+          "action": "Inspect real codex history data",
+          "expected": "Real history.jsonl has epoch-second timestamps",
+          "observed": "First entry: {\"session_id\":\"019c8b18-...\",\"ts\":1771860195,\"text\":\"how do i keep this machine from sleeping?\"} — ts=1771860195 is epoch seconds (2026-02-23)"
+        }
+      ],
+      "evidence": {
+        "terminalOutput": "multi-tool-ingestion/codex/pytest-codex-output.txt and db-queries.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CODEX-007",
+      "title": "Codex source_tool tagging",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run pytest test_codex_source_tool_tagging",
+          "expected": "All Codex session records have source_tool='codex'",
+          "observed": "PASSED — all(r['source_tool'] == 'codex' for r in records) is True"
+        },
+        {
+          "action": "Run pytest test_codex_history_source_tool",
+          "expected": "Codex history records also have source_tool='codex'",
+          "observed": "PASSED — records[0]['source_tool'] == 'codex'"
+        },
+        {
+          "action": "Query production DB: SELECT DISTINCT source_tool FROM messages WHERE source_file LIKE '%/.codex/%'",
+          "expected": "Returns only 'codex'",
+          "observed": "Returns: codex (single value, confirming all 57 codex records tagged correctly)"
+        }
+      ],
+      "evidence": {
+        "terminalOutput": "multi-tool-ingestion/codex/pytest-codex-output.txt and db-queries.txt",
+        "consoleErrors": "none",
+        "network": "sqlite3 query -> 'codex'"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CODEX-008",
+      "title": "Codex session_id extraction",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run pytest test_codex_session_id_from_meta",
+          "expected": "session_id extracted from session_meta.payload.id",
+          "observed": "PASSED — records[0]['session_id'] == 'unique-codex-uuid' (extracted from session_meta payload)"
+        },
+        {
+          "action": "Verify parse_codex_session_jsonl code propagates session_id",
+          "expected": "session_id set from session_meta and applied to all subsequent records",
+          "observed": "Code confirmed: session_id = payload.get('id') in session_meta block, then used in all record dicts"
+        }
+      ],
+      "evidence": {
+        "terminalOutput": "multi-tool-ingestion/codex/pytest-codex-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 8 assertions (VAL-CODEX-001 through VAL-CODEX-008): all 8 passed. 14 pytest tests covering all Codex ingestion behaviors passed. Production DB confirms 57 codex records with correct source_tool tagging. discover_sources() finds 5 codex session files and 1 history file."
+}
