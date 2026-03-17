@@ -5,7 +5,7 @@ commands:
   lint: "echo 'No linter configured'"
   schema_validate: sqlite3 :memory: < /home/matthewmurray/claude-memory/schema.sql
   ast_check: |
-    cd /home/matthewmurray/claude-memory && for f in src/distill.py src/embed.py src/mcp_server.py src/memory_db.py src/web.py; do
+    cd /home/matthewmurray/claude-memory && for f in src/distill.py src/embed.py src/ingest.py src/mcp_server.py src/memory_db.py src/web.py; do
       python3 -c "import ast; ast.parse(open('$f').read()); print('$f: OK')"
     done
 
