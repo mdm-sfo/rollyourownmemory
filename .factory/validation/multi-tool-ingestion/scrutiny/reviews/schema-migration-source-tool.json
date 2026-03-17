@@ -1,0 +1,44 @@
+{
+  "featureId": "schema-migration-source-tool",
+  "reviewedAt": "2026-03-17T02:45:00Z",
+  "commitId": "f9d4889",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "verdict": "pass",
+  "codeReview": {
+    "summary": "Migration 7 correctly adds source_tool TEXT DEFAULT 'claude_code' to the messages table following the existing idempotent migration pattern (PRAGMA table_info check). The guard `if msg_columns and` properly handles edge cases where the messages table doesn't exist (e.g., fact_embeddings tests). insert_records() is updated to include source_tool as the 8th field with a safe fallback via r.get('source_tool', 'claude_code'). All 3 existing parsers (parse_history_file, parse_project_jsonl, parse_interaction_jsonl) add source_tool='claude_code' to their record dicts — 5 insertion points total. 9 well-structured tests cover column existence, default value, pre-existing row handling, idempotency, all parser tagging, and insert_records persistence with mixed source_tool values. No security concerns — parameterized queries throughout, hardcoded values only.",
+    "issues": [
+      {
+        "file": "src/memory_db.py",
+        "line": 123,
+        "severity": "non_blocking",
+        "description": "schema.sql does not include source_tool in the messages CREATE TABLE definition. Fresh databases created from schema.sql alone won't have source_tool until migrate_schema() runs. This is fine because get_conn() always calls migrate_schema(), but it means schema.sql is no longer a complete representation of the live schema. Consider adding a comment to schema.sql noting that migration-added columns exist."
+      }
+    ]
+  },
+  "codeQualityIssues": [
+    {
+      "severity": "non_blocking",
+      "description": "schema.sql does not include source_tool in the messages CREATE TABLE definition. Fresh databases rely on migrate_schema() to add this column. The current architecture handles this (get_conn calls migrate_schema), but schema.sql is drifting from the actual schema. Consider adding a comment or updating schema.sql to reflect migration-added columns.",
+      "file": "schema.sql",
+      "line": 10
+    }
+  ],
+  "sharedStateObservations": [
+    {
+      "target": "AGENTS.md",
+      "area": "conventions",
+      "observation": "AGENTS.md states 'Do NOT modify existing parser functions: parse_history_file, parse_project_jsonl, parse_interaction_jsonl', but the feature spec explicitly required adding source_tool='claude_code' to all existing parsers. The worker correctly prioritized the feature spec. AGENTS.md should be updated to acknowledge that the record dict schema now includes source_tool, and that the off-limits constraint refers to behavioral/logic changes, not additive field additions.",
+      "evidence": "Mission AGENTS.md 'Off-limits code' section vs feature description: 'Add source_tool to each record dict returned by existing parsers (hardcode claude_code for existing parsers)'. Worker modified parse_history_file (line 123), parse_project_jsonl (line 186), parse_interaction_jsonl (lines 226, 240, 255) to add the field."
+    },
+    {
+      "target": "skills",
+      "area": "skills",
+      "observation": "The ingest-worker skill procedure says to run 'python src/ingest.py --full' against real data as a verification step. The worker's skillFeedback correctly notes this is unnecessary for schema-migration-only features — direct SQL verification is faster and more appropriate. The skill could include a note that for migration-only features, SQL-level verification is sufficient.",
+      "evidence": "Skill SKILL.md step 4: 'Run python src/ingest.py --full on real data'. Worker skillFeedback.suggestedChanges: 'for the schema-migration-only feature this is unnecessary — direct SQL verification on the DB is more appropriate and faster.'"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. Migration 7 is correctly implemented: idempotent (PRAGMA table_info check + messages table existence guard), adds source_tool TEXT DEFAULT 'claude_code', and follows the established migration pattern. insert_records() properly includes source_tool as the 8th field with a defensive fallback. All 3 existing parsers correctly set source_tool='claude_code'. 9 comprehensive tests cover all assertions (VAL-SCHEMA-001/002/003, VAL-INT-005). Worker discovered and fixed an edge case where Migration 7 crashed on DBs without a messages table (fact_embeddings test scenario). No blocking issues. One non-blocking observation: schema.sql is drifting from the live schema since migration-added columns aren't reflected there."
+}

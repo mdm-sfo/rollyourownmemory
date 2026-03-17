@@ -4,7 +4,7 @@
 
 **Location:** `~/.factory/sessions/<encoded-cwd>/<session-uuid>.jsonl`
 
-**Directory encoding:** Same as Claude Code. `-home-matthewmurray-claude-memory` → `/home/matthewmurray/claude-memory`
+**Directory encoding:** Similar to Claude Code but does NOT use double-hyphen escaping for literal hyphens. All hyphens are path separators. Example: `-home-matthewmurray-claude-memory` decodes to `/home/matthewmurray/claude/memory` (not `/home/matthewmurray/claude-memory`). This means paths with literal hyphens lose that distinction. Note: `derive_project()` applies the same logic to both Factory and Claude Code paths, so Factory projects with hyphens in directory names will have incorrect project derivation.
 
 **Record types:**
 - `session_start` — first line. Fields: `id` (session UUID), `title`, `cwd`, `version`, `callingSessionId` (optional, for subagent chains)

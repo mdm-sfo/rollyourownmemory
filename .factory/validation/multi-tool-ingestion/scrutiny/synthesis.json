@@ -1,0 +1,83 @@
+{
+  "milestone": "multi-tool-ingestion",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": { "passed": true, "command": "cd /home/matthewmurray/claude-memory && source .venv/bin/activate && pytest tests/ -v", "exitCode": 0, "detail": "293 passed, 3 warnings, 0 failures in 85.15s" },
+    "typecheck": { "passed": true, "command": "echo 'No typecheck configured (pure Python project)'", "exitCode": 0 },
+    "lint": { "passed": true, "command": "echo 'No linter configured'", "exitCode": 0 },
+    "ast_check": { "passed": true, "command": "python3 -c 'import ast; ast.parse(...)' for all src/*.py files", "exitCode": 0, "detail": "All 6 source files parsed OK" }
+  },
+  "reviewsSummary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "nonBlockingIssues": [
+    {
+      "featureId": "schema-migration-source-tool",
+      "severity": "non_blocking",
+      "description": "schema.sql does not include source_tool in the messages CREATE TABLE definition. Fresh databases rely on migrate_schema() to add this column. The current architecture handles this (get_conn calls migrate_schema), but schema.sql is drifting from the actual schema.",
+      "file": "schema.sql"
+    },
+    {
+      "featureId": "factory-and-codex-parsers",
+      "severity": "non_blocking",
+      "description": "derive_project() inconsistency: existing check uses p.endswith('projects') (broad match) but new check uses p == 'sessions' (exact match). Actually safer but asymmetric.",
+      "file": "src/ingest.py",
+      "line": 85
+    },
+    {
+      "featureId": "factory-and-codex-parsers",
+      "severity": "non_blocking",
+      "description": "parse_codex_history() uses datetime.fromtimestamp(ts) producing local-timezone timestamps. Consistent with existing parse_history_file() code but not timezone-safe. Not a regression.",
+      "file": "src/ingest.py",
+      "line": 430
+    },
+    {
+      "featureId": "factory-and-codex-parsers",
+      "severity": "non_blocking",
+      "description": "Factory directory encoding does not use double-hyphen escaping for literal hyphens (unlike Claude Code). derive_project() applies the same decoding to both, producing incorrect project paths for Factory sessions with literal hyphens (e.g., /home/matthewmurray/claude-memory → /home/matthewmurray/claude/memory). No cross-tool confusion currently since no Claude Code projects overlap.",
+      "file": "src/ingest.py",
+      "line": 82
+    },
+    {
+      "featureId": "factory-and-codex-parsers",
+      "severity": "non_blocking",
+      "description": "Session ID from header records (session_start/session_meta) would be None if file is resumed from non-zero offset. No practical impact since session files are written once and don't grow.",
+      "file": "src/ingest.py",
+      "line": 310
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Updated ingestion-formats.md to correct Factory directory encoding documentation. Factory does NOT use double-hyphen escaping for literal hyphens — all hyphens are path separators. Added note about derive_project() implications.",
+      "sourceFeature": "factory-and-codex-parsers",
+      "file": ".factory/library/ingestion-formats.md"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Clarify the 'Do NOT modify existing parser functions' constraint in mission AGENTS.md. The schema-migration feature required adding source_tool field to all 3 existing parsers, which the worker correctly prioritized over the off-limits boundary. The constraint should be refined to: 'Do not change the behavioral logic of existing parsers — additive field additions (e.g., source_tool) are permitted when required by the feature spec.'",
+      "evidence": "Mission AGENTS.md 'Off-limits code' section said not to modify parse_history_file, parse_project_jsonl, parse_interaction_jsonl. Feature spec required adding source_tool='claude_code' to all parser record dicts. Worker correctly followed the feature spec. The constraint was too broad.",
+      "isSystemic": false
+    },
+    {
+      "target": "skills",
+      "suggestion": "Add a note to the ingest-worker skill that for schema-migration-only features, direct SQL verification (PRAGMA table_info, SELECT COUNT) is sufficient — running 'python src/ingest.py --full' against real data is unnecessary and slow for migration-only changes.",
+      "evidence": "Worker's skillFeedback.suggestedChanges for schema-migration-source-tool: 'for the schema-migration-only feature this is unnecessary — direct SQL verification on the DB is more appropriate and faster.'",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Factory directory encoding skill feedback (from factory-and-codex-parsers review) — duplicate of the library documentation accuracy issue",
+      "reason": "duplicate — addressed by the applied library update to ingestion-formats.md"
+    }
+  ],
+  "previousRound": null
+}

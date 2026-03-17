@@ -1,0 +1,68 @@
+{
+  "featureId": "factory-and-codex-parsers",
+  "reviewedAt": "2026-03-17T02:45:00.000Z",
+  "commitId": "f6e5fcf",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "verdict": "pass",
+  "codeReview": {
+    "summary": "Clean, well-structured implementation of 3 new parsers (parse_factory_jsonl, parse_codex_session_jsonl, parse_codex_history) plus extract_codex_content helper. All parsers follow the existing signature pattern (filepath, offset=0) -> (records, new_offset) and use identical file I/O patterns (open binary, seek, iterate, strip, JSON decode with try/except). Factory parser correctly reuses extract_text_content() for content blocks. Codex parser correctly uses a new extract_codex_content() for input_text/output_text blocks. discover_sources() properly discovers all three new source types with appropriate directory traversal (glob for Factory, rglob for Codex's nested date structure). derive_project() extended with minimal, safe change. 27 comprehensive tests covering all parsers, edge cases, and malformed input. Full ingest verified with real data: factory=5746, codex=57, claude_code=13462 messages. Idempotency confirmed.",
+    "issues": [
+      {
+        "file": "src/ingest.py",
+        "line": 85,
+        "severity": "non_blocking",
+        "description": "Minor inconsistency in derive_project(): existing check uses p.endswith('projects') (matching both 'projects' and 'ec2-projects'), but new check uses p == 'sessions' (exact match only). While this is actually safer (prevents false matches), the asymmetry could confuse future maintainers. Consider adding a comment explaining the intentional difference."
+      },
+      {
+        "file": "src/ingest.py",
+        "line": 430,
+        "severity": "non_blocking",
+        "description": "parse_codex_history() uses datetime.fromtimestamp(ts) which produces local-timezone timestamps. This matches the existing parse_history_file() pattern (line 122: datetime.fromtimestamp(ts/1000)), so it's consistent, but both could benefit from using UTC (datetime.utcfromtimestamp or datetime.fromtimestamp(ts, tz=timezone.utc)) for cross-timezone correctness. Not a regression since existing code has the same behavior."
+      },
+      {
+        "file": "src/ingest.py",
+        "line": 310,
+        "severity": "non_blocking",
+        "description": "Factory and Codex session parsers extract session_id from header records (session_start/session_meta). If a file is resumed from a non-zero offset (e.g., file grows after initial ingestion), session_id would be None for new records since the header was already consumed. This is a theoretical concern only — session files are written once and don't grow — but differs from parse_project_jsonl where session_id comes from each record. No practical impact."
+      }
+    ]
+  },
+  "codeQualityIssues": [
+    {
+      "severity": "non_blocking",
+      "description": "Minor inconsistency in derive_project(): existing check uses p.endswith('projects') (matching both 'projects' and 'ec2-projects'), but new check uses p == 'sessions' (exact match only). While this is actually safer, the asymmetry could confuse future maintainers.",
+      "file": "src/ingest.py",
+      "line": 85
+    },
+    {
+      "severity": "non_blocking",
+      "description": "parse_codex_history() uses datetime.fromtimestamp(ts) producing local-timezone timestamps. Consistent with existing code but not timezone-safe. Not a regression.",
+      "file": "src/ingest.py",
+      "line": 430
+    },
+    {
+      "severity": "non_blocking",
+      "description": "Session ID from header records (session_start/session_meta) would be None if file is resumed from non-zero offset. No practical impact since session files are written once.",
+      "file": "src/ingest.py",
+      "line": 310
+    }
+  ],
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "target": "skills",
+      "observation": "Worker's skillFeedback.suggestedChanges notes that Factory directory encoding may not use double hyphens for literal hyphens despite the format analysis doc saying 'same as Claude Code'. The library doc ingestion-formats.md states double-hyphen escaping applies to Factory, but real directory names observed by the worker show single hyphens everywhere. This could be a documentation accuracy issue in .factory/library/ingestion-formats.md.",
+      "evidence": "Handoff skillFeedback.suggestedChanges: 'The skill could mention that Factory directory encoding may not actually use double hyphens for literal hyphens despite the format analysis saying same as Claude Code - real directory names show single hyphens everywhere'"
+    },
+    {
+      "area": "conventions",
+      "target": "library",
+      "observation": "The ingestion-formats.md library doc was updated during the mission setup but may need a correction: it states Factory uses the same path encoding as Claude Code (double-hyphen escaping), but real-world Factory sessions may not use double hyphens. The code handles both cases correctly (derive_project works regardless), but the documentation could be misleading for future workers.",
+      "evidence": "ingestion-formats.md: 'Directory encoding: Same as Claude Code. -home-matthewmurray-claude-memory → /home/matthewmurray/claude-memory'. Worker feedback suggests this may not be accurate."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The implementation is clean, follows existing patterns faithfully, and is thoroughly tested (27 new tests). All 3 parsers correctly handle their respective JSONL formats. Factory reuses extract_text_content() appropriately; Codex has a well-implemented extract_codex_content() for input_text/output_text blocks. discover_sources() correctly discovers all source types. derive_project() safely extended. Malformed input handled gracefully. Idempotency maintained. Only non-blocking issues found: minor derive_project asymmetry, local-timezone timestamps (consistent with existing code), and theoretical session_id gap on file resume (no practical impact). One shared-state observation: the library doc may overstate Factory's path encoding similarity to Claude Code."
+}
