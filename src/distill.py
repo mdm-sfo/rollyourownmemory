@@ -16,8 +16,10 @@ from pathlib import Path
 from typing import Any, Optional
 
 try:
+    from src.config import DEFAULT_LLM_MODEL, OLLAMA_BASE_URL
     from src.memory_db import get_conn, get_session_messages
 except ImportError:
+    from config import DEFAULT_LLM_MODEL, OLLAMA_BASE_URL
     from memory_db import get_conn, get_session_messages
 
 MEMORY_DIR = Path(__file__).parent.parent
@@ -118,7 +120,7 @@ def extract_facts_heuristic(session_messages):
     return facts
 
 
-def extract_facts_llm(session_messages, api_base=None, model: str = "llama3.3:70b",
+def extract_facts_llm(session_messages, api_base=None, model: str = None,
                       existing_facts=None):
     """Extract facts using a local LLM via OpenAI-compatible API.
 
@@ -127,7 +129,7 @@ def extract_facts_llm(session_messages, api_base=None, model: str = "llama3.3:70
     Args:
         session_messages: List of message dicts from a session.
         api_base: OpenAI-compatible API base URL.
-        model: LLM model name (default: llama3.3:70b).
+        model: LLM model name (default: from config / MEMORY_LLM_MODEL env var).
         existing_facts: Optional list of fact strings already extracted — the LLM
             will be instructed not to re-extract these.
     """
@@ -137,7 +139,8 @@ def extract_facts_llm(session_messages, api_base=None, model: str = "llama3.3:70
         print("httpx required for LLM extraction: pip install httpx", file=sys.stderr)
         return []
 
-    base = api_base or "http://localhost:11434/v1"
+    base = api_base or f"{OLLAMA_BASE_URL}/v1"
+    model = model or DEFAULT_LLM_MODEL
     user_msgs = [m for m in session_messages if m["role"] == "user"]
     if not user_msgs:
         return []
@@ -574,7 +577,7 @@ def detect_cross_project_patterns(conn: sqlite3.Connection, model: Optional[str]
 
     Args:
         conn: SQLite database connection.
-        model: LLM model name (default: llama3.3:70b).
+        model: LLM model name (default: from config / MEMORY_LLM_MODEL env var).
         min_projects: Minimum number of projects required for pattern detection.
     """
     try:
@@ -616,7 +619,7 @@ def detect_cross_project_patterns(conn: sqlite3.Connection, model: Optional[str]
 
     summary = "\n\n".join(summary_parts)
 
-    model_name = model or "llama3.3:70b"
+    model_name = model or DEFAULT_LLM_MODEL
 
     prompt = f"""Analyze these facts from {len(projects)} different projects. Find patterns that repeat across 3 or more projects — these represent the user's global preferences, habits, or architectural style.
 
@@ -635,7 +638,7 @@ Return ONLY a JSON array, no other text."""
 
     try:
         resp = httpx.post(
-            "http://localhost:11434/v1/chat/completions",
+            f"{OLLAMA_BASE_URL}/v1/chat/completions",
             json={
                 "model": model_name,
                 "messages": [{"role": "user", "content": prompt}],
@@ -774,7 +777,7 @@ def _segment_session(messages: list[dict], drift_threshold: float = 0.3,
     return segments if segments else [messages]
 
 
-def distill(use_llm=False, api_base=None, limit=None, model: str = "llama3.3:70b",
+def distill(use_llm=False, api_base=None, limit=None, model: str = None,
             segment: bool = True):
     conn = get_conn(str(DB_PATH))
     sessions = get_undistilled_sessions(conn)
@@ -847,8 +850,8 @@ def main():
 
     run = sub.add_parser("run", help="Distill facts from undistilled sessions")
     run.add_argument("--llm", action="store_true", help="Use local LLM for enhanced extraction")
-    run.add_argument("--model", default="llama3.3:70b", help="LLM model name (default: llama3.3:70b)")
-    run.add_argument("--api-base", help="OpenAI-compatible API base URL (default: localhost:11434)")
+    run.add_argument("--model", default=None, help=f"LLM model name (default: {DEFAULT_LLM_MODEL}, set MEMORY_LLM_MODEL to override)")
+    run.add_argument("--api-base", help=f"OpenAI-compatible API base URL (default: {OLLAMA_BASE_URL})")
     run.add_argument("--limit", type=int, help="Max sessions to process")
     run.add_argument("--embed-model", default=None,
                      help="Embedding model for dedup (minilm, mpnet). Default: match embed.py default.")
@@ -867,7 +870,7 @@ def main():
                        help="Cosine similarity threshold (default: 0.85)")
 
     patterns_cmd = sub.add_parser("patterns", help="Detect cross-project patterns")
-    patterns_cmd.add_argument("--model", help="LLM model name (default: llama3.3:70b)")
+    patterns_cmd.add_argument("--model", help=f"LLM model name (default: {DEFAULT_LLM_MODEL})")
     patterns_cmd.add_argument("--min-projects", type=int, default=3,
                               help="Minimum projects for pattern detection (default: 3)")
     patterns_cmd.add_argument("--promote", action="store_true",

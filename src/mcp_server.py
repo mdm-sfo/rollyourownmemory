@@ -10,6 +10,7 @@ from typing import Optional
 from mcp.server import FastMCP
 
 try:
+    from src.config import DEFAULT_LLM_MODEL, OLLAMA_BASE_URL
     from src.memory_db import (
         get_conn as _get_conn,
         search_fts,
@@ -20,6 +21,7 @@ try:
         DB_PATH,
     )
 except ImportError:
+    from config import DEFAULT_LLM_MODEL, OLLAMA_BASE_URL
     from memory_db import (
         get_conn as _get_conn,
         search_fts,
@@ -460,9 +462,9 @@ def memory_deep_recall(query: str, synthesize: bool = True, limit: int = 10,
             )
 
             resp = httpx.post(
-                "http://localhost:11434/v1/chat/completions",
+                f"{OLLAMA_BASE_URL}/v1/chat/completions",
                 json={
-                    "model": "llama3.3:70b",
+                    "model": DEFAULT_LLM_MODEL,
                     "messages": [{"role": "user", "content": synth_prompt}],
                     "temperature": 0.1,
                 },

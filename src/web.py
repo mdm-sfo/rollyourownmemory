@@ -16,10 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from src import memory_db
-
-# LLM settings
-OLLAMA_BASE_URL = "http://localhost:11434"
-OLLAMA_MODEL = "llama3.3:70b"
+from src.config import DEFAULT_LLM_MODEL, OLLAMA_BASE_URL
 
 # Paths
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -402,7 +399,7 @@ async def ask(
                     "POST",
                     f"{OLLAMA_BASE_URL}/api/generate",
                     json={
-                        "model": OLLAMA_MODEL,
+                        "model": DEFAULT_LLM_MODEL,
                         "prompt": prompt,
                         "stream": True,
                     },

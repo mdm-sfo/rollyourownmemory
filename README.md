@@ -182,13 +182,12 @@ python3 src/distill.py run
 **With local LLM (much higher quality):**
 ```bash
 # Install ollama: https://ollama.com
-ollama pull llama3.3:70b      # 70B, needs ~50GB RAM, excellent quality (default)
-# OR for a smaller model:
-ollama pull llama3.2          # 3B, fast, decent quality
+ollama pull llama3.2          # 3B, fast, runs anywhere — good starting point
+
+# Set your model (add to ~/.bashrc or ~/.zshrc to persist)
+export MEMORY_LLM_MODEL=llama3.2
 
 .venv/bin/python src/distill.py run --llm
-# Or with a specific model:
-.venv/bin/python src/distill.py run --llm --model llama3.2
 ```
 
 ### 6. Extract entities
@@ -617,15 +616,37 @@ This is **enabled by default** during `distill.py run`. To disable it:
 
 Segmentation improves fact extraction quality for long, multi-topic sessions by giving the LLM focused chunks of conversation rather than a single large transcript.
 
-### LLM for Distillation
+### LLM Configuration
 
-Default: `llama3.3:70b`. To use a different model:
+The LLM model is configured centrally in `src/config.py` and used by fact extraction (`distill.py`), the web UI's Ask mode (`web.py`), and deep recall synthesis (`mcp_server.py`).
+
+**Set your model via environment variable (recommended):**
 
 ```bash
-.venv/bin/python src/distill.py run --llm --model llama3.3:70b
+export MEMORY_LLM_MODEL=nemotron-3-super    # or any ollama model you have
+export MEMORY_OLLAMA_URL=http://localhost:11434  # optional, this is the default
 ```
 
-Any ollama model works — just pass its name via `--model`.
+**Or override per-command via `--model`:**
+
+```bash
+.venv/bin/python src/distill.py run --llm --model llama3.2
+```
+
+**Popular model choices:**
+
+| Model | Size | Notes |
+|-------|------|-------|
+| `nemotron-3-super` | 123B (Q4_K_M ~87GB) | Excellent quality, needs DGX/high-RAM GPU |
+| `llama3.3:70b` | 70B (~40GB) | Great quality, fits on 48GB+ VRAM |
+| `llama3.2` | 3B (~2GB) | Fast, decent quality, runs anywhere |
+
+To get started: install [ollama](https://ollama.com), pull a model, and set the env var:
+
+```bash
+ollama pull llama3.2              # small, fast, good starting point
+export MEMORY_LLM_MODEL=llama3.2  # add to your shell profile
+```
 
 ### Context Budget
 

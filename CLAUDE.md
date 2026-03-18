@@ -1,7 +1,7 @@
 <coding_guidelines>
 # Claude Memory
 
-Conversation memory system — ingests Claude Code JSONL logs into SQLite + FTS5 + vector embeddings.
+Conversation memory system — ingests JSONL logs from Claude Code, Factory.ai, and Codex CLI into SQLite + FTS5 + vector embeddings.
 
 ## Architecture
 
@@ -13,7 +13,8 @@ Conversation memory system — ingests Claude Code JSONL logs into SQLite + FTS5
 
 | File | Purpose |
 |------|---------|
-| `src/ingest.py` | ETL: JSONL -> SQLite (uses tribunal venv, stdlib only) |
+| `src/config.py` | Centralized LLM model + ollama URL config (env var overrides) |
+| `src/ingest.py` | ETL: JSONL -> SQLite (Claude Code, Factory.ai, Codex CLI) |
 | `src/embed.py` | Generate sentence-transformer embeddings |
 | `src/distill.py` | Extract structured facts from sessions |
 | `src/entities.py` | Entity/tool/library extraction |

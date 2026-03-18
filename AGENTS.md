@@ -7,14 +7,15 @@ Local conversation memory system — SQLite + FTS5 + sentence-transformer embedd
 - **DB**: `memory.db` (SQLite with FTS5, vector embeddings, facts, entities)
 - **Venv**: `.venv/` (sentence-transformers, numpy, httpx)
 - **MCP server**: `src/mcp_server.py` — 12 tools for memory search, facts, entities, deep recall
-- **Local LLM**: Ollama `llama3.3:70b` for fact extraction and synthesis
+- **Local LLM**: Ollama (model configurable via `MEMORY_LLM_MODEL` env var, default: `nemotron-3-super`)
 - **Embeddings**: `all-MiniLM-L6-v2` (384-dim) default, `all-mpnet-base-v2` (768-dim) via registry in `embed.py`
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/ingest.py` | ETL: JSONL → SQLite |
+| `src/config.py` | Centralized LLM model + ollama URL config (env var overrides) |
+| `src/ingest.py` | ETL: JSONL → SQLite (Claude Code, Factory.ai, Codex CLI) |
 | `src/embed.py` | Generate sentence-transformer embeddings (message + fact level) |
 | `src/distill.py` | Extract structured facts via local LLM, with topic segmentation |
 | `src/entities.py` | Entity/tool/library extraction |
@@ -45,7 +46,7 @@ Local conversation memory system — SQLite + FTS5 + sentence-transformer embedd
 
 - License: CC BY-NC 4.0
 - Python 3.12+, aarch64 (DGX Spark) primary target
-- Do NOT change the default model (`llama3.3:70b`) in distill.py
+- LLM model is configured in `src/config.py` via `MEMORY_LLM_MODEL` env var (default: `nemotron-3-super`)
 - Embedding model is `all-MiniLM-L6-v2` (384-dim) — do not swap without running the migration in embed.py
 
 ## Memory Context
