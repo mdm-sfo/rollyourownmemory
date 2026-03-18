@@ -1,6 +1,6 @@
 # Roll Your Own Memory
 
-[![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![SQLite](https://img.shields.io/badge/storage-SQLite-003B57.svg)](https://sqlite.org)
 [![MCP](https://img.shields.io/badge/MCP-compatible-brightgreen.svg)](https://modelcontextprotocol.io)
@@ -23,20 +23,21 @@ This fixes that.
 - **Passive recall** — a memory context file auto-injects your key facts, recent sessions, and tech stack into every session via `CLAUDE.md`
 - **Active recall** — search your full conversation history by keyword or meaning, mid-session, via MCP tools or slash commands
 - **Knowledge accumulation** — facts, preferences, and decisions are extracted from every conversation and build up over time
-- **Multi-tool support** — ingests conversations from Claude Code, Factory.ai, and Codex CLI into a single unified memory
+- **Multi-tool ingestion** — conversations from Claude Code, Factory.ai, and Codex CLI flow into a single unified memory
 
 No external services. No API keys. Just SQLite, local embeddings, and an optional local LLM.
 
-## What 8 Weeks of Memory Looks Like
+## What Accumulated Memory Looks Like
 
-After ~2 months of normal Claude Code usage, the system has accumulated:
+After regular usage across multiple AI coding tools, the system builds a persistent knowledge base:
 
 | Metric | Value |
 |--------|-------|
 | Conversations indexed | 13,000+ messages across 400+ sessions |
 | Vector embeddings | 13,000+ (every message searchable by meaning) |
-| Facts extracted | 670+ (preference, decision, learning, context, tool, pattern, error, solution) |
+| Facts extracted | 2,600+ (preference, decision, learning, context, tool, pattern, error, solution) |
 | Entities tracked | 330+ (libraries, tools, services, languages) |
+| Source tools | 3 (Claude Code, Factory.ai, Codex CLI) |
 | Machines covered | 3 (primary dev, cloud server, secondary) |
 | Projects spanned | 14 |
 | Database size | 40 MB |
@@ -52,6 +53,24 @@ Tools:          git(26x), playwright(19x), pip(15x), tmux(11x)
 Databases:      sqlite(10x), postgres(6x)
 Protocols:      ssh(77x), http(76x), websocket(20x)
 ```
+
+## Multi-Tool Support
+
+The ingest pipeline automatically discovers and parses conversation logs from three AI coding tools:
+
+| Tool | Log Location | Format |
+|------|-------------|--------|
+| Claude Code | `~/.claude/projects/*/`, `~/.claude/history.jsonl` | JSONL with `type` field (user/assistant) |
+| Factory.ai (Droid) | `~/.factory/sessions/*/` | JSONL with `role` field + tool calls |
+| Codex CLI | `~/.codex/sessions/YYYY/MM/DD/*.jsonl`, `~/.codex/history.jsonl` | JSONL with `type` field + content blocks |
+
+All conversations flow into the same SQLite database, searchable together. The `source_tool` column lets you filter by tool when needed — in the web UI, via MCP tools, or with direct SQL queries.
+
+No configuration needed — `ingest.py` auto-discovers all available log directories.
+
+<p align="center">
+  <img src="static/screenshots/web-facts.png" alt="Web UI — Fact management with source tool filtering" width="700">
+</p>
 
 ## Architecture
 
@@ -442,6 +461,10 @@ python3 src/curate.py stats
 
 A browser-based search engine and curation interface for your memory.
 
+<p align="center">
+  <img src="static/screenshots/web-facts.png" alt="Web UI — Fact management with multi-tool filtering" width="700">
+</p>
+
 ### Starting the Web UI
 
 ```bash
@@ -471,20 +494,6 @@ PROJECT_ALIASES = {
     "my-other-project": "other",
 }
 ```
-
-## Multi-Tool Support
-
-The ingest pipeline automatically discovers and parses conversation logs from three AI coding tools:
-
-| Tool | Log Location | Format |
-|------|-------------|--------|
-| Claude Code | `~/.claude/projects/*/`, `~/.claude/history.jsonl` | JSONL with `type` field (user/assistant) |
-| Factory.ai (Droid) | `~/.factory/sessions/*/` | JSONL with `role` field + tool calls |
-| Codex CLI | `~/.codex/sessions/YYYY/MM/DD/*.jsonl`, `~/.codex/history.jsonl` | JSONL with `type` field + content blocks |
-
-All conversations flow into the same database, searchable together. The `source_tool` column lets you filter by tool when needed (e.g., in the web UI's fact curation page, or via SQL queries).
-
-No configuration needed — `ingest.py` auto-discovers all available log directories.
 
 ## Multi-Machine Support
 
@@ -688,4 +697,4 @@ Sections are assigned priorities (header=1, facts=2, focus=3, sessions=4, stack=
 
 ## License
 
-[CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/) — free to use, share, and adapt for non-commercial purposes with attribution.
+[MIT License](LICENSE) — free to use, modify, and distribute, including for commercial purposes.
