@@ -8,11 +8,11 @@
 
 > **"Bro, we literally fixed this exact same bug two weeks ago. Why don't you remember that?"**
 
-That's the problem. Every Claude Code session starts from zero. It doesn't know your projects, your preferences, or that you debugged this identical stack trace last Tuesday. You re-explain context constantly. You lose decisions. You repeat yourself.
+That's the problem. Every AI coding session starts from zero. It doesn't know your projects, your preferences, or that you debugged this identical stack trace last Tuesday. You re-explain context constantly. You lose decisions. You repeat yourself.
 
 This fixes that.
 
-**Roll Your Own Memory** gives Claude Code persistent, searchable memory across every session — fully local, fully private, no cloud APIs.
+**Roll Your Own Memory** gives your AI coding tools persistent, searchable memory across every session — fully local, fully private, no cloud APIs. Works with **Claude Code**, **Factory.ai (Droid)**, and **OpenAI Codex CLI**.
 
 <p align="center">
   <img src="demo.gif" alt="Demo" width="600">
@@ -23,6 +23,7 @@ This fixes that.
 - **Passive recall** — a memory context file auto-injects your key facts, recent sessions, and tech stack into every session via `CLAUDE.md`
 - **Active recall** — search your full conversation history by keyword or meaning, mid-session, via MCP tools or slash commands
 - **Knowledge accumulation** — facts, preferences, and decisions are extracted from every conversation and build up over time
+- **Multi-tool support** — ingests conversations from Claude Code, Factory.ai, and Codex CLI into a single unified memory
 
 No external services. No API keys. Just SQLite, local embeddings, and an optional local LLM.
 
@@ -105,7 +106,7 @@ Protocols:      ssh(77x), http(76x), websocket(20x)
 | File | Purpose |
 |------|---------|
 | `schema.sql` | SQLite schema: messages, embeddings, facts, entities with FTS5 indexes |
-| `src/ingest.py` | ETL pipeline: reads Claude Code JSONL logs → SQLite. Incremental via byte-offset cursors. |
+| `src/ingest.py` | ETL pipeline: reads JSONL logs from Claude Code, Factory.ai, and Codex CLI → SQLite. Incremental via byte-offset cursors. Tracks `source_tool` per message. |
 | `src/embed.py` | Generates sentence-transformer embeddings for semantic search. Model registry with short names (`minilm`, `mpnet`). `--reembed` flag to switch models. Dimension-mismatch safety for mixed-model databases. |
 | `src/distill.py` | Extracts structured facts from conversations using regex heuristics + local LLM (ollama). Includes dedup (embedding-similarity deduplication), cross-project pattern detection, error/solution categorization, compressed_details extraction, conversation segmentation, and `backfill_embeddings` for existing facts. |
 | `src/entities.py` | Identifies tools, libraries, languages, platforms mentioned across conversations. |
@@ -113,7 +114,7 @@ Protocols:      ssh(77x), http(76x), websocket(20x)
 | `src/curate.py` | Interactive fact review, hand-curation, import/export. |
 | `bin/claude-recall` | CLI search tool: keyword, semantic, sessions, facts. Backward-compatible with bare queries. |
 | `src/mcp_server.py` | MCP server exposing memory tools: search, facts, semantic fact search, inspect, deep recall, resume context, feedback. |
-| `src/web.py` | FastAPI web UI: browser-based search (including semantic fact search in Ask mode), fact curation, CLAUDE.md editor, context preview. |
+| `src/web.py` | FastAPI web UI: browser-based search (including semantic fact search in Ask mode), fact curation with project/source-tool filters, CLAUDE.md editor, context preview. |
 | `static/` | Frontend assets (HTML, CSS, JS) for the web UI. |
 
 ## Setup
@@ -121,7 +122,10 @@ Protocols:      ssh(77x), http(76x), websocket(20x)
 ### Prerequisites
 
 - Python 3.10+
-- [Claude Code](https://code.claude.com) installed
+- At least one supported AI coding tool:
+  - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (primary)
+  - [Factory.ai / Droid](https://factory.ai) (supported)
+  - [OpenAI Codex CLI](https://github.com/openai/codex) (supported)
 - [ollama](https://ollama.com) (optional, for LLM-powered fact extraction)
 - GPU recommended for embeddings (works on CPU, just slower)
 
@@ -153,11 +157,12 @@ print('Database initialized')
 python3 src/ingest.py
 ```
 
-This reads your Claude Code conversation logs from:
-- `~/.claude/history.jsonl` — user prompts with metadata
-- `~/.claude/projects/*/` — full session transcripts (user + assistant)
+This reads conversation logs from all supported tools:
+- **Claude Code**: `~/.claude/history.jsonl` and `~/.claude/projects/*/` session transcripts
+- **Factory.ai**: `~/.factory/sessions/*/` session JSONLs
+- **Codex CLI**: `~/.codex/sessions/` recursive session JSONLs and `~/.codex/history.jsonl`
 
-The ingest is incremental — it tracks byte offsets in `state.json` so re-runs only process new data.
+Each message is tagged with a `source_tool` (`claude_code`, `factory`, or `codex`) for attribution. The ingest is incremental — it tracks byte offsets in `state.json` so re-runs only process new data.
 
 ### 4. Generate embeddings
 
@@ -451,7 +456,7 @@ Then open http://localhost:8585 in your browser.
 
 - **Search** — Full-text search across messages, facts, and sessions. Toggle semantic search for meaning-based results. When semantic search is enabled, semantic fact matches are included alongside message results.
 - **Ask** — Get LLM-synthesized answers from your memory with source citations (requires ollama). Uses both FTS and semantic search for facts and messages to gather comprehensive context.
-- **Fact Management** — Browse, filter, edit, and delete facts. Adjust confidence scores. Filter by category, project, or confidence range.
+- **Fact Management** — Browse, filter, edit, and delete facts. Adjust confidence scores. Filter by category, project, source tool, or confidence range.
 - **CLAUDE.md Editor** — Edit your `~/.claude/CLAUDE.md` with live markdown preview.
 - **Context Preview** — See what `inject.py` would generate for `memory-context.md`. Adjust token budget and project filter.
 
@@ -467,6 +472,20 @@ PROJECT_ALIASES = {
     "my-other-project": "other",
 }
 ```
+
+## Multi-Tool Support
+
+The ingest pipeline automatically discovers and parses conversation logs from three AI coding tools:
+
+| Tool | Log Location | Format |
+|------|-------------|--------|
+| Claude Code | `~/.claude/projects/*/`, `~/.claude/history.jsonl` | JSONL with `type` field (user/assistant) |
+| Factory.ai (Droid) | `~/.factory/sessions/*/` | JSONL with `role` field + tool calls |
+| Codex CLI | `~/.codex/sessions/YYYY/MM/DD/*.jsonl`, `~/.codex/history.jsonl` | JSONL with `type` field + content blocks |
+
+All conversations flow into the same database, searchable together. The `source_tool` column lets you filter by tool when needed (e.g., in the web UI's fact curation page, or via SQL queries).
+
+No configuration needed — `ingest.py` auto-discovers all available log directories.
 
 ## Multi-Machine Support
 
@@ -526,20 +545,22 @@ Then filter by user in `inject.py` to show only relevant facts, or show all fact
 ## Schema
 
 ```sql
-messages        — id, source_file, session_id, project, role, content, timestamp, machine
+messages        — id, source_file, session_id, project, role, content, timestamp, machine, source_tool
 embeddings      — message_id, embedding (float32 blob), model
-facts           — id, session_id, project, fact, category, confidence, source_message_id, compressed_details
+facts           — id, session_id, project, fact, category, confidence, source_message_id, compressed_details, source_tool
 fact_embeddings — fact_id, embedding (float32 blob), model
 entities        — id, name, entity_type, first_seen, last_seen, mention_count
 entity_mentions — id, entity_id, message_id, session_id, timestamp
 ```
 
+The `source_tool` column tracks which AI coding tool generated each message and fact (`claude_code`, `factory`, or `codex`).
+
 FTS5 indexes on `messages.content` and `facts.fact` for fast keyword search. Porter stemming enabled.
 
 ## How the Pieces Fit Together
 
-1. **You use Claude Code normally.** Conversations are saved as JSONL by Claude Code itself.
-2. **`ingest.py`** (cron, every 15 min) reads new JSONL data into SQLite.
+1. **You use your AI coding tools normally.** Conversations are saved as JSONL by Claude Code, Factory.ai, and/or Codex CLI.
+2. **`ingest.py`** (cron, every 15 min) reads new JSONL data from all tools into SQLite, tagging each with its `source_tool`.
 3. **`embed.py`** (cron, hourly) generates vector embeddings for new messages.
 4. **`distill.py`** (cron, hourly) extracts facts from new sessions using regex + optionally a local LLM.
 5. **`entities.py`** (cron, hourly) identifies tools/libraries/services mentioned.
