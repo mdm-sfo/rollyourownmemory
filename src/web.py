@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from src import memory_db
-from src.config import DEFAULT_LLM_MODEL, OLLAMA_BASE_URL
+from src.config import DEFAULT_LLM_MODEL, OLLAMA_BASE_URL, LLM_TIMEOUT
 
 # Paths
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -394,7 +394,7 @@ async def ask(
 
         # Stream from ollama
         try:
-            async with httpx.AsyncClient(timeout=120) as client:
+            async with httpx.AsyncClient(timeout=LLM_TIMEOUT) as client:
                 async with client.stream(
                     "POST",
                     f"{OLLAMA_BASE_URL}/api/generate",

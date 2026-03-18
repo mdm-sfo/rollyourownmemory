@@ -10,7 +10,7 @@ from typing import Optional
 from mcp.server import FastMCP
 
 try:
-    from src.config import DEFAULT_LLM_MODEL, OLLAMA_BASE_URL
+    from src.config import DEFAULT_LLM_MODEL, OLLAMA_BASE_URL, LLM_TIMEOUT
     from src.memory_db import (
         get_conn as _get_conn,
         search_fts,
@@ -21,7 +21,7 @@ try:
         DB_PATH,
     )
 except ImportError:
-    from config import DEFAULT_LLM_MODEL, OLLAMA_BASE_URL
+    from config import DEFAULT_LLM_MODEL, OLLAMA_BASE_URL, LLM_TIMEOUT
     from memory_db import (
         get_conn as _get_conn,
         search_fts,
@@ -468,7 +468,7 @@ def memory_deep_recall(query: str, synthesize: bool = True, limit: int = 10,
                     "messages": [{"role": "user", "content": synth_prompt}],
                     "temperature": 0.1,
                 },
-                timeout=120,
+                timeout=LLM_TIMEOUT,
             )
             resp.raise_for_status()
             synthesis = resp.json()["choices"][0]["message"]["content"]

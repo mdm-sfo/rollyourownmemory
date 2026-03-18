@@ -16,10 +16,10 @@ from pathlib import Path
 from typing import Any, Optional
 
 try:
-    from src.config import DEFAULT_LLM_MODEL, OLLAMA_BASE_URL
+    from src.config import DEFAULT_LLM_MODEL, OLLAMA_BASE_URL, LLM_TIMEOUT
     from src.memory_db import get_conn, get_session_messages
 except ImportError:
-    from config import DEFAULT_LLM_MODEL, OLLAMA_BASE_URL
+    from config import DEFAULT_LLM_MODEL, OLLAMA_BASE_URL, LLM_TIMEOUT
     from memory_db import get_conn, get_session_messages
 
 MEMORY_DIR = Path(__file__).parent.parent
@@ -220,7 +220,7 @@ Return ONLY a JSON array, no other text."""
         return facts
 
     # Three-level retry: normal → conservative → heuristic fallback
-    # Level 1: Normal attempt (temp 0.1, timeout 180s)
+    # Level 1: Normal attempt (temp 0.1)
     try:
         resp = httpx.post(
             f"{base}/chat/completions",
@@ -229,7 +229,7 @@ Return ONLY a JSON array, no other text."""
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.1,
             },
-            timeout=180,
+            timeout=LLM_TIMEOUT,
         )
         resp.raise_for_status()
         text = resp.json()["choices"][0]["message"]["content"]
@@ -242,7 +242,7 @@ Return ONLY a JSON array, no other text."""
             file=sys.stderr,
         )
 
-    # Level 2: Retry with lower temperature and shorter timeout
+    # Level 2: Retry with lower temperature
     try:
         resp = httpx.post(
             f"{base}/chat/completions",
@@ -251,7 +251,7 @@ Return ONLY a JSON array, no other text."""
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.05,
             },
-            timeout=90,
+            timeout=LLM_TIMEOUT,
         )
         resp.raise_for_status()
         text = resp.json()["choices"][0]["message"]["content"]
@@ -644,7 +644,7 @@ Return ONLY a JSON array, no other text."""
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.1,
             },
-            timeout=180,
+            timeout=LLM_TIMEOUT,
         )
         resp.raise_for_status()
         content = resp.json()["choices"][0]["message"]["content"]
